@@ -14,7 +14,153 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      audit_events: {
+        Row: {
+          created_at: string
+          details: string | null
+          entry_count: number
+          event_type: string
+          id: number
+          ip_address: string | null
+          route: string
+          user_agent: string | null
+          user_email: string | null
+          user_name: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          entry_count?: number
+          event_type: string
+          id?: number
+          ip_address?: string | null
+          route: string
+          user_agent?: string | null
+          user_email?: string | null
+          user_name?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          entry_count?: number
+          event_type?: string
+          id?: number
+          ip_address?: string | null
+          route?: string
+          user_agent?: string | null
+          user_email?: string | null
+          user_name?: string | null
+        }
+        Relationships: []
+      }
+      cash_flow_entries: {
+        Row: {
+          audit_event_id: number | null
+          created_at: string
+          date: string
+          debit_cents: number
+          id: number
+          source: string
+        }
+        Insert: {
+          audit_event_id?: number | null
+          created_at?: string
+          date: string
+          debit_cents: number
+          id?: number
+          source: string
+        }
+        Update: {
+          audit_event_id?: number | null
+          created_at?: string
+          date?: string
+          debit_cents?: number
+          id?: number
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_entries_audit_event_fk"
+            columns: ["audit_event_id"]
+            isOneToOne: false
+            referencedRelation: "audit_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_flow_import_entries: {
+        Row: {
+          date: string
+          debit_cents: number
+          id: number
+          import_run_id: number
+        }
+        Insert: {
+          date: string
+          debit_cents: number
+          id?: number
+          import_run_id: number
+        }
+        Update: {
+          date?: string
+          debit_cents?: number
+          id?: number
+          import_run_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_import_entries_import_run_id_fkey"
+            columns: ["import_run_id"]
+            isOneToOne: false
+            referencedRelation: "cash_flow_import_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cash_flow_import_runs: {
+        Row: {
+          audit_event_id: number | null
+          created_at: string
+          entry_count: number
+          file_name: string | null
+          id: number
+          mapped_columns: string
+          period_end: string
+          period_start: string
+          total_debit_cents: number
+        }
+        Insert: {
+          audit_event_id?: number | null
+          created_at?: string
+          entry_count: number
+          file_name?: string | null
+          id?: number
+          mapped_columns: string
+          period_end: string
+          period_start: string
+          total_debit_cents: number
+        }
+        Update: {
+          audit_event_id?: number | null
+          created_at?: string
+          entry_count?: number
+          file_name?: string | null
+          id?: number
+          mapped_columns?: string
+          period_end?: string
+          period_start?: string
+          total_debit_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cash_flow_import_runs_audit_event_id_fkey"
+            columns: ["audit_event_id"]
+            isOneToOne: false
+            referencedRelation: "audit_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
