@@ -195,7 +195,10 @@ export function PurchasesDashboardTab() {
   );
   const savePurchase = () => {
     const value = parseBRL(form.value);
-    if (!form.date || !form.supplier || value <= 0) return toast.error("Informe data, fornecedor e valor válido.");
+    if (!form.date || !form.supplier || value <= 0) {
+      toast.error("Informe data, fornecedor e valor válido.");
+      return;
+    }
     const next = [...purchases, { id: crypto.randomUUID(), date: form.date, sector: form.sector, supplier: form.supplier, value, invoice: form.invoice }];
     setPurchases(next);
     localStorage.setItem(PURCHASES_KEY, JSON.stringify(next));
@@ -213,7 +216,7 @@ export function PurchasesDashboardTab() {
     reader.onload = () => {
       try {
         const wb = XLSX.read(reader.result, { type: "array", cellDates: true });
-        const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
+        const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]!]!, { header: 1, defval: "" });
         const headers = (sheetRows[0] || []).map((header) =>
           String(header).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""),
         );
@@ -228,7 +231,7 @@ export function PurchasesDashboardTab() {
           .slice(1)
           .map((row) => {
             const date = row[idx.date] instanceof Date ? (row[idx.date] as Date).toISOString().slice(0, 10) : String(row[idx.date] || "");
-            const sector = SECTORS.find((item) => item.toLowerCase() === String(row[idx.sector] || "").toLowerCase()) || SECTORS[0];
+            const sector = (SECTORS.find((item) => item.toLowerCase() === String(row[idx.sector] || "").toLowerCase()) ?? SECTORS[0]) as Sector;
             const value = typeof row[idx.value] === "number" ? (row[idx.value] as number) : parseBRL(String(row[idx.value] || ""));
             return date && value > 0
               ? {

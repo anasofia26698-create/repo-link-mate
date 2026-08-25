@@ -134,8 +134,14 @@ function HomePage() {
   const addDebit = () => {
     const value = parseBRL(newEntry.debit);
     const responsible = actorName.trim();
-    if (!newEntry.date || !value || value <= 0) return toast.error("Informe uma data e um débito válido.");
-    if (!responsible) return toast.error("Informe seu nome para registrar a confirmação.");
+    if (!newEntry.date || !value || value <= 0) {
+      toast.error("Informe uma data e um débito válido.");
+      return;
+    }
+    if (!responsible) {
+      toast.error("Informe seu nome para registrar a confirmação.");
+      return;
+    }
     confirmMutation.mutate(
       { data: { entries: [{ date: newEntry.date, debitCents: Math.round(value * 100) }], actorName: responsible } },
       {
@@ -154,8 +160,14 @@ function HomePage() {
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
     const responsible = actorName.trim();
-    if (!selected.length) return toast.error("Selecione pelo menos um prazo para confirmar a compra.");
-    if (!responsible) return toast.error("Informe seu nome para confirmar a compra.");
+    if (!selected.length) {
+      toast.error("Selecione pelo menos um prazo para confirmar a compra.");
+      return;
+    }
+    if (!responsible) {
+      toast.error("Informe seu nome para confirmar a compra.");
+      return;
+    }
     confirmMutation.mutate(
       {
         data: {
@@ -178,8 +190,14 @@ function HomePage() {
   };
 
   const simulate = () => {
-    if (simulationMode === "dates" && !paymentDates.length) return toast.error("Informe pelo menos uma data no formato DD/MM/AAAA.");
-    if (simulationMode === "terms" && !terms.length) return toast.error("Informe pelo menos um prazo em dias.");
+    if (simulationMode === "dates" && !paymentDates.length) {
+      toast.error("Informe pelo menos uma data no formato DD/MM/AAAA.");
+      return;
+    }
+    if (simulationMode === "terms" && !terms.length) {
+      toast.error("Informe pelo menos um prazo em dias.");
+      return;
+    }
     setSimulated(true);
     recordSimulation({
       data: {
@@ -213,7 +231,7 @@ function HomePage() {
       try {
         const arrayBuffer = reader.result as ArrayBuffer;
         const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
+        const ws = wb.Sheets[wb.SheetNames[0]!]!;
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" });
         const headerLabels = (rows[0] || []).map((header) => String(header));
         const headers = headerLabels.map((header) =>
@@ -244,8 +262,8 @@ function HomePage() {
             debit: headerLabels[debitIndex] || "Débito",
             balance: headerLabels[balanceIndex] || "Saldo",
           },
-          periodStart: dates[0],
-          periodEnd: dates[dates.length - 1],
+          periodStart: dates[0]!,
+          periodEnd: dates[dates.length - 1]!,
           totalDebitCents,
         };
         importMutation.mutate(
@@ -259,7 +277,7 @@ function HomePage() {
           {
             onSuccess: (shared) => {
               setEntries(shared.map(toEntry));
-              setImportSummary({ count: imported.length, start: dates[0], end: dates[dates.length - 1], total: totalDebitCents / 100 });
+              setImportSummary({ count: imported.length, start: dates[0]!, end: dates[dates.length - 1]!, total: totalDebitCents / 100 });
               toast.success(`${imported.length} lançamentos importados e compartilhados. A planilha agora é a fonte central do fluxo.`);
             },
             onError: () => toast.error("Não foi possível atualizar o fluxo compartilhado."),

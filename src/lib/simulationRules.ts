@@ -8,11 +8,11 @@ const PURCHASE_RATIO = 0.6;
 export function getPurchaseLimitForDate(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   const weekday = parsed.getDay();
-  const averageSales = WEEKDAY_AVERAGE_SALES[weekday];
+  const averageSales = WEEKDAY_AVERAGE_SALES[weekday] ?? 0;
   const weekdayLimit = averageSales * PURCHASE_RATIO;
   const isCritical = CRITICAL_PAYMENT_DAYS.includes(parsed.getDate() as typeof CRITICAL_PAYMENT_DAYS[number]);
   return {
-    weekday: WEEKDAY_NAMES[weekday],
+    weekday: WEEKDAY_NAMES[weekday] ?? "",
     averageSales,
     weekdayLimit,
     isCritical,
@@ -32,7 +32,9 @@ export function parsePaymentDates(value: string): PaymentDate[] {
     .map(raw => {
       const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (!match) return null;
-      const [, day, month, year] = match;
+      const day = match[1]!;
+      const month = match[2]!;
+      const year = match[3]!;
       const date = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       const parsed = new Date(`${date}T12:00:00`);
       const validCalendarDate = parsed.getFullYear() === Number(year)

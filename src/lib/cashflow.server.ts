@@ -10,7 +10,7 @@ export type SharedEntry = {
 };
 
 export type ImportMeta = {
-  fileName?: string;
+  fileName?: string | undefined;
   mappedColumns: Record<string, string>;
   periodStart: string;
   periodEnd: string;
@@ -18,10 +18,10 @@ export type ImportMeta = {
 };
 
 export type Actor = {
-  actorName?: string;
-  ipAddress?: string;
-  userAgent?: string;
-  route?: string;
+  actorName?: string | undefined;
+  ipAddress?: string | undefined;
+  userAgent?: string | undefined;
+  route?: string | undefined;
 };
 
 function ttlCutoffIso() {
@@ -81,7 +81,7 @@ export async function insertAuditEvent(input: {
 export async function replaceImportedEntries(input: {
   entries: { date: string; debitCents: number }[];
   actor: Actor;
-  importMeta?: ImportMeta;
+  importMeta?: ImportMeta | undefined;
 }): Promise<SharedEntry[]> {
   const auditEventId = await insertAuditEvent({
     eventType: "import",
@@ -139,7 +139,7 @@ export async function replaceImportedEntries(input: {
 }
 
 export async function confirmPurchaseEntries(input: {
-  entries: { date: string; debitCents: number; termDays?: number }[];
+  entries: { date: string; debitCents: number; termDays?: number | undefined }[];
   actor: Actor;
 }): Promise<SharedEntry[]> {
   const totalCents = input.entries.reduce((sum, entry) => sum + entry.debitCents, 0);
@@ -246,6 +246,7 @@ export async function importComparison(): Promise<ImportComparison> {
   if (runs.length < 2) return { runs, changes: [] };
 
   const currentRun = runs[0];
+  if (!currentRun) return { runs, changes: [] };
   const previousRuns = runs.slice(1, 6);
   const runIds = [currentRun.id, ...previousRuns.map((run) => run.id)];
 
@@ -273,7 +274,7 @@ export async function importComparison(): Promise<ImportComparison> {
   }
 
   for (const [key, cents] of perRunDate) {
-    const date = key.split("|")[1];
+    const date = key.split("|")[1]!;
     previousByDate.set(date, [...(previousByDate.get(date) ?? []), cents]);
   }
 
