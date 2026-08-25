@@ -81,7 +81,7 @@ export async function insertAuditEvent(input: {
 export async function replaceImportedEntries(input: {
   entries: { date: string; debitCents: number }[];
   actor: Actor;
-  importMeta?: ImportMeta;
+  importMeta?: ImportMeta | undefined;
 }): Promise<SharedEntry[]> {
   const auditEventId = await insertAuditEvent({
     eventType: "import",
