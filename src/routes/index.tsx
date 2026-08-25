@@ -118,7 +118,6 @@ function HomePage() {
       });
   }, [activeEntries]);
 
-  const criticalRows = grouped.filter((row) => row.critical);
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
   const paymentDates = parsePaymentDates(paymentDatesInput);
@@ -143,32 +142,6 @@ function HomePage() {
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
-
-  const addDebit = () => {
-    const value = parseBRL(newEntry.debit);
-    const responsible = actorName.trim();
-    if (!newEntry.date || !value || value <= 0) {
-      toast.error("Informe uma data e um débito válido.");
-      return;
-    }
-    if (!responsible) {
-      toast.error("Informe seu nome para registrar a confirmação.");
-      return;
-    }
-    confirmMutation.mutate(
-      { data: { entries: [{ date: newEntry.date, debitCents: Math.round(value * 100) }], actorName: responsible } },
-      {
-        onSuccess: (rows) => {
-          setEntries(rows.map(toEntry));
-          setNewEntry({ date: today, debit: "" });
-          setActorName("");
-          setShowAdd(false);
-          toast.success("Registro compartilhado por 7 dias.");
-        },
-        onError: () => toast.error("Não foi possível salvar o registro compartilhado."),
-      },
-    );
-  };
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
