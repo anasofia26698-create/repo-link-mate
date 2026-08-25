@@ -425,24 +425,22 @@ function HomePage() {
                             <span>{scenario.isCritical ? "Limite crítico" : "Meta do dia"}</span>
                             <strong>{money(scenario.limit)}</strong>
                           </div>
-                          {scenario.existing <= scenario.limit && (
-                            <div>
-                              <span>Disponível para compra no dia</span>
-                              <strong className="green-text">{money(scenario.limit - scenario.existing)}</strong>
-                            </div>
-                          )}
                         </div>
-                        {scenario.existing > scenario.limit ? (
-                          <div className="scenario-alert">
-                            <div className="scenario-alert-main">
-                              Valor ultrapassado da meta diária
-                              <strong>{money(scenario.existing - scenario.limit)}</strong>
-                            </div>
-                            <div className="scenario-alert-support">Débitos existentes + parcela ultrapassam o limite.</div>
+                        <div className="scenario-alert">
+                          <div className="scenario-alert-main">
+                            {scenario.existing <= scenario.limit
+                              ? "Saldo Disponível para compra no dia"
+                              : "Valor ultrapassado da meta diária"}
+                            <strong className={scenario.existing <= scenario.limit ? "green-text" : "red-text"}>
+                              {money(Math.abs(scenario.limit - scenario.existing))}
+                            </strong>
                           </div>
-                        ) : (
-                          <p>Débitos existentes + parcela ficam dentro do limite.</p>
-                        )}
+                          <div className="scenario-alert-support">
+                            {scenario.existing <= scenario.limit
+                              ? "Débitos existentes + parcela ficam dentro do limite."
+                              : "Débitos existentes + parcela ultrapassam o limite."}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
