@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { AlertTriangle, Menu, Plus, X } from "lucide-react";
+import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
@@ -41,6 +41,21 @@ type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
 
+const CRITICAL_DAYS_INFO = [
+  { day: 5, label: "Folha de pagamento" },
+  { day: 10, label: "Custos altos (aluguel, luz, água...)" },
+  { day: 15, label: "Impostos" },
+  { day: 20, label: "Adiantamento + impostos" },
+  { day: 25, label: "Impostos" },
+] as const;
+
+function nextCriticalDate(day: number, from: string) {
+  const base = new Date(`${from}T12:00:00`);
+  let candidate = new Date(base.getFullYear(), base.getMonth(), day, 12);
+  if (candidate.getTime() < base.getTime()) candidate = new Date(base.getFullYear(), base.getMonth() + 1, day, 12);
+  return iso(candidate);
+}
+
 function HomePage() {
   const [tab, setTab] = useState<Tab>("fluxo");
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -52,8 +67,6 @@ function HomePage() {
   const [simulated, setSimulated] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedTerms, setSelectedTerms] = useState<number[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newEntry, setNewEntry] = useState({ date: iso(new Date()), debit: "" });
   const [actorName, setActorName] = useState("");
   const [importSummary, setImportSummary] = useState<{ count: number; start: string; end: string; total: number } | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
