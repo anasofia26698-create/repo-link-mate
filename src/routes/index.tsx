@@ -479,7 +479,7 @@ function HomePage() {
                   <p>Todos os débitos importados, organizados por data e comparados com a meta do dia.</p>
                 </div>
                 <button className="btn btn-light" onClick={() => setShowAdd(true)}>
-                  Adicionar dia e valor
+                  <Plus size={15} /> Adicionar dia e valor
                 </button>
               </div>
               <div className="timeline-list">
@@ -611,5 +611,3 @@ function HomePage() {
   );
 }
 
-const WalletCardsIcon = WalletCards;
-void WalletCardsIcon;
