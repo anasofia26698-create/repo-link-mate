@@ -587,47 +587,6 @@ function HomePage() {
           </div>
         </div>
       )}
-      {showAdd && (
-        <div className="modal-backdrop">
-          <div className="modal-light">
-            <div className="modal-title">
-              <div>
-                <p className="eyebrow">Registro temporário</p>
-                <h2>Adicionar dia e valor compra</h2>
-              </div>
-              <button className="icon-btn" onClick={() => setShowAdd(false)} aria-label="Fechar">
-                <X size={18} />
-              </button>
-            </div>
-            <p className="modal-description">
-              Este valor ajuda os compradores durante os próximos 7 dias e depois deixa de afetar o fluxo. A planilha importada continua sendo a fonte
-              principal.
-            </p>
-            <div className="form-stack">
-              <label>
-                Seu nome
-                <input value={actorName} onChange={(event) => setActorName(event.target.value)} placeholder="Responsável pelo registro" />
-              </label>
-              <label>
-                Data de vencimento
-                <input type="date" value={newEntry.date} onChange={(event) => setNewEntry({ ...newEntry, date: event.target.value })} />
-              </label>
-              <label>
-                Valor do débito
-                <input type="number" min="0" value={newEntry.debit} onChange={(event) => setNewEntry({ ...newEntry, debit: event.target.value })} />
-              </label>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-light" onClick={() => setShowAdd(false)}>
-                Cancelar
-              </button>
-              <button className="btn btn-dark" onClick={addDebit}>
-                Salvar registro por 7 dias
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
