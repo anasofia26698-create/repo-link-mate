@@ -161,6 +161,30 @@ export type Database = {
           },
         ]
       }
+      known_ip_users: {
+        Row: {
+          created_at: string
+          id: number
+          ip_address: string
+          updated_at: string
+          user_name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          ip_address: string
+          updated_at?: string
+          user_name: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          ip_address?: string
+          updated_at?: string
+          user_name?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

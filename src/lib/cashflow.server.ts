@@ -182,26 +182,73 @@ export type AuditEventRow = {
   entryCount: number;
   details: string | null;
   createdAt: string;
+  knownName: string | null;
 };
 
 export async function recentAuditEvents(limit: number): Promise<AuditEventRow[]> {
+  const [eventsResult, knownIps] = await Promise.all([
+    supabaseAdmin
+      .from("audit_events")
+      .select("id,event_type,user_name,user_email,ip_address,user_agent,entry_count,details,created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    listKnownIpUsers(),
+  ]);
+  if (eventsResult.error) throw new Error(eventsResult.error.message);
+  const nameByIp = new Map(knownIps.map((item) => [normalizeIp(item.ipAddress), item.userName]));
+  return (eventsResult.data ?? []).map((row) => {
+    const ipAddress = row.ip_address as string | null;
+    return {
+      id: Number(row.id),
+      eventType: row.event_type as string,
+      userName: row.user_name as string | null,
+      userEmail: row.user_email as string | null,
+      ipAddress,
+      userAgent: row.user_agent as string | null,
+      entryCount: Number(row.entry_count),
+      details: row.details as string | null,
+      createdAt: row.created_at as string,
+      knownName: ipAddress ? (nameByIp.get(normalizeIp(ipAddress)) ?? null) : null,
+    };
+  });
+}
+
+export type KnownIpUser = {
+  id: number;
+  ipAddress: string;
+  userName: string;
+};
+
+const normalizeIp = (ip: string) => ip.trim().toLowerCase();
+
+export async function listKnownIpUsers(): Promise<KnownIpUser[]> {
   const { data, error } = await supabaseAdmin
-    .from("audit_events")
-    .select("id,event_type,user_name,user_email,ip_address,user_agent,entry_count,details,created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+    .from("known_ip_users")
+    .select("id,ip_address,user_name")
+    .order("user_name", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
     id: Number(row.id),
-    eventType: row.event_type as string,
-    userName: row.user_name as string | null,
-    userEmail: row.user_email as string | null,
-    ipAddress: row.ip_address as string | null,
-    userAgent: row.user_agent as string | null,
-    entryCount: Number(row.entry_count),
-    details: row.details as string | null,
-    createdAt: row.created_at as string,
+    ipAddress: row.ip_address as string,
+    userName: row.user_name as string,
   }));
+}
+
+export async function saveKnownIpUser(input: { ipAddress: string; userName: string }): Promise<KnownIpUser[]> {
+  const { error } = await supabaseAdmin
+    .from("known_ip_users")
+    .upsert(
+      { ip_address: normalizeIp(input.ipAddress), user_name: input.userName.trim(), updated_at: new Date().toISOString() },
+      { onConflict: "ip_address" },
+    );
+  if (error) throw new Error(error.message);
+  return listKnownIpUsers();
+}
+
+export async function removeKnownIpUser(id: number): Promise<KnownIpUser[]> {
+  const { error } = await supabaseAdmin.from("known_ip_users").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return listKnownIpUsers();
 }
 
 export type ImportRunRow = {

@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { AlertTriangle, Menu, Plus, X } from "lucide-react";
+import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
@@ -41,6 +41,21 @@ type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
 
+const CRITICAL_DAYS_INFO = [
+  { day: 5, label: "Folha de pagamento" },
+  { day: 10, label: "Custos altos (aluguel, luz, água...)" },
+  { day: 15, label: "Impostos" },
+  { day: 20, label: "Adiantamento + impostos" },
+  { day: 25, label: "Impostos" },
+] as const;
+
+function nextCriticalDate(day: number, from: string) {
+  const base = new Date(`${from}T12:00:00`);
+  let candidate = new Date(base.getFullYear(), base.getMonth(), day, 12);
+  if (candidate.getTime() < base.getTime()) candidate = new Date(base.getFullYear(), base.getMonth() + 1, day, 12);
+  return iso(candidate);
+}
+
 function HomePage() {
   const [tab, setTab] = useState<Tab>("fluxo");
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -52,8 +67,6 @@ function HomePage() {
   const [simulated, setSimulated] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedTerms, setSelectedTerms] = useState<number[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newEntry, setNewEntry] = useState({ date: iso(new Date()), debit: "" });
   const [actorName, setActorName] = useState("");
   const [importSummary, setImportSummary] = useState<{ count: number; start: string; end: string; total: number } | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -105,7 +118,6 @@ function HomePage() {
       });
   }, [activeEntries]);
 
-  const criticalRows = grouped.filter((row) => row.critical);
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
   const paymentDates = parsePaymentDates(paymentDatesInput);
@@ -130,32 +142,6 @@ function HomePage() {
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
-
-  const addDebit = () => {
-    const value = parseBRL(newEntry.debit);
-    const responsible = actorName.trim();
-    if (!newEntry.date || !value || value <= 0) {
-      toast.error("Informe uma data e um débito válido.");
-      return;
-    }
-    if (!responsible) {
-      toast.error("Informe seu nome para registrar a confirmação.");
-      return;
-    }
-    confirmMutation.mutate(
-      { data: { entries: [{ date: newEntry.date, debitCents: Math.round(value * 100) }], actorName: responsible } },
-      {
-        onSuccess: (rows) => {
-          setEntries(rows.map(toEntry));
-          setNewEntry({ date: today, debit: "" });
-          setActorName("");
-          setShowAdd(false);
-          toast.success("Registro compartilhado por 7 dias.");
-        },
-        onError: () => toast.error("Não foi possível salvar o registro compartilhado."),
-      },
-    );
-  };
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
@@ -439,6 +425,17 @@ function HomePage() {
                             <span>{scenario.isCritical ? "Limite crítico" : "Meta do dia"}</span>
                             <strong>{money(scenario.limit)}</strong>
                           </div>
+                          {scenario.existing > scenario.limit ? (
+                            <div>
+                              <span>Valor ultrapassado da meta diária</span>
+                              <strong className="red-text">{money(scenario.existing - scenario.limit)}</strong>
+                            </div>
+                          ) : (
+                            <div>
+                              <span>Disponível para compra no dia</span>
+                              <strong className="green-text">{money(scenario.limit - scenario.existing)}</strong>
+                            </div>
+                          )}
                         </div>
                         <p>
                           {scenario.canBuy
@@ -460,70 +457,76 @@ function HomePage() {
                 </section>
               )}
             </div>
-            <section className="card critical-card critical-below">
-              <div className="card-heading">
-                <div>
-                  <h2>Dias críticos e datas de pagamento</h2>
-                  <p>À esquerda, os eventos críticos; à direita, as datas, dias da semana e metas aplicadas.</p>
-                </div>
-                <AlertTriangle size={20} />
-              </div>
-              <div className="critical-list">
-                {criticalRows.map((row) => (
-                  <div className={"critical-item " + (row.exceeded ? "critical-risk" : "")} key={row.date}>
-                    <div className="critical-event">
-                      <strong>{row.critical}</strong>
-                      <span>Dia crítico de pagamento</span>
-                    </div>
-                    <div className="critical-date">
-                      <strong>{dayMonthBR(row.date)}</strong>
-                      <span>
-                        {row.weekday} · limite de {money(row.limit)}
-                      </span>
-                    </div>
-                    <div className="critical-amount">
-                      <b className={row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</b>
-                      <small>{row.exceeded ? "limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</small>
-                    </div>
+            <div className="flow-columns">
+              <section className="card critical-card critical-below">
+                <div className="card-heading">
+                  <div>
+                    <h2>Dias críticos e datas de pagamento</h2>
+                    <p>Os cinco dias críticos do mês, com a próxima data de pagamento e a meta aplicada.</p>
                   </div>
-                ))}
-                {!criticalRows.length && <div className="empty">Nenhuma data crítica carregada.</div>}
-              </div>
-            </section>
-            <section className="card timeline-card">
-              <div className="card-heading">
-                <div>
-                  <h2>Débitos por dia</h2>
-                  <p>Todos os débitos importados, organizados por data e comparados com a meta do dia.</p>
+                  <AlertTriangle size={20} />
                 </div>
-                <button className="btn btn-light" onClick={() => setShowAdd(true)}>
-                  <Plus size={15} /> Adicionar dia e valor
-                </button>
-              </div>
-              <div className="timeline-list">
-                {grouped.map((row) => (
-                  <div className="timeline-row" key={row.date}>
-                    <div className="timeline-label">
-                      <strong>{dateBR(row.date)}</strong>
-                      <span>{row.critical || row.weekday}</span>
-                    </div>
-                    <div className="timeline-track">
-                      <div
-                        className={"timeline-fill " + (row.exceeded ? "fill-risk" : "")}
-                        style={{ width: String(Math.min(100, row.debit / row.limit * 100)) + "%" }}
-                      />
-                    </div>
-                    <div className="timeline-value">
-                      <strong className={row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</strong>
-                      <span>{row.exceeded ? "Limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
-                    </div>
+                <div className="critical-list">
+                  {CRITICAL_DAYS_INFO.map((item) => {
+                    const date = nextCriticalDate(item.day, today);
+                    const target = getPurchaseLimitForDate(date);
+                    const flow = grouped.find((row) => row.date === date);
+                    const exceeded = flow ? flow.debit > target.limit : false;
+                    return (
+                      <div className={"critical-item " + (exceeded ? "critical-risk" : "")} key={item.day}>
+                        <div className="critical-event">
+                          <strong>
+                            Dia {String(item.day).padStart(2, "0")} — {item.label}
+                          </strong>
+                          <span>Dia crítico de pagamento</span>
+                        </div>
+                        <div className="critical-date">
+                          <strong>{dayMonthBR(date)}</strong>
+                          <span>
+                            {target.weekday} · limite de {money(target.limit)}
+                          </span>
+                        </div>
+                        <div className="critical-amount">
+                          <b className={exceeded ? "red-text" : "green-text"}>{money(flow?.debit ?? 0)}</b>
+                          <small>{flow ? (exceeded ? "limite ultrapassado" : `${money(target.limit - flow.debit)} livres`) : "sem débitos"}</small>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+              <section className="card timeline-card">
+                <div className="card-heading">
+                  <div>
+                    <h2>Débitos por dia</h2>
+                    <p>Todos os débitos importados, organizados por data e comparados com a meta do dia.</p>
                   </div>
-                ))}
-                {!grouped.length && (
-                  <div className="empty">Nenhum débito importado. Acesse “Importar Planilha” para começar.</div>
-                )}
-              </div>
-            </section>
+                </div>
+                <div className="timeline-list">
+                  {grouped.map((row) => (
+                    <div className="timeline-row" key={row.date}>
+                      <div className="timeline-label">
+                        <strong>{dateBR(row.date)}</strong>
+                        <span>{row.critical || row.weekday}</span>
+                      </div>
+                      <div className="timeline-track">
+                        <div
+                          className={"timeline-fill " + (row.exceeded ? "fill-risk" : "")}
+                          style={{ width: String(Math.min(100, row.debit / row.limit * 100)) + "%" }}
+                        />
+                      </div>
+                      <div className="timeline-value">
+                        <strong className={row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</strong>
+                        <span>{row.exceeded ? "Limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {!grouped.length && (
+                    <div className="empty">Nenhum débito importado. Acesse “Importar Planilha” para começar.</div>
+                  )}
+                </div>
+              </section>
+            </div>
           </>
         ) : tab === "importar" ? (
           <ImportTab onFile={importFile} onDownload={downloadTemplate} summary={importSummary} />
@@ -579,47 +582,6 @@ function HomePage() {
               </button>
               <button className="btn btn-dark" onClick={confirmPurchase}>
                 Confirmar e atualizar fluxo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {showAdd && (
-        <div className="modal-backdrop">
-          <div className="modal-light">
-            <div className="modal-title">
-              <div>
-                <p className="eyebrow">Registro temporário</p>
-                <h2>Adicionar dia e valor compra</h2>
-              </div>
-              <button className="icon-btn" onClick={() => setShowAdd(false)} aria-label="Fechar">
-                <X size={18} />
-              </button>
-            </div>
-            <p className="modal-description">
-              Este valor ajuda os compradores durante os próximos 7 dias e depois deixa de afetar o fluxo. A planilha importada continua sendo a fonte
-              principal.
-            </p>
-            <div className="form-stack">
-              <label>
-                Seu nome
-                <input value={actorName} onChange={(event) => setActorName(event.target.value)} placeholder="Responsável pelo registro" />
-              </label>
-              <label>
-                Data de vencimento
-                <input type="date" value={newEntry.date} onChange={(event) => setNewEntry({ ...newEntry, date: event.target.value })} />
-              </label>
-              <label>
-                Valor do débito
-                <input type="number" min="0" value={newEntry.debit} onChange={(event) => setNewEntry({ ...newEntry, debit: event.target.value })} />
-              </label>
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-light" onClick={() => setShowAdd(false)}>
-                Cancelar
-              </button>
-              <button className="btn btn-dark" onClick={addDebit}>
-                Salvar registro por 7 dias
               </button>
             </div>
           </div>
