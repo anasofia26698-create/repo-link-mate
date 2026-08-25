@@ -19,7 +19,7 @@ function auditEventLabel(type: string) {
 function formatAuditDetail(type: string, value: string | null) {
   if (!value) return null;
   try {
-    const details = JSON.parse(value) as Record<string, any>;
+    const details = JSON.parse(value) as any;
     if (type === "confirmation" && typeof details.totalCents === "number" && Array.isArray(details.installments))
       return `Valor: ${money(details.totalCents / 100)} · ${details.installments
         .map((item: any) => `${item.termDays ?? "—"} dias → ${dateBR(item.date)} (${money(item.debitCents / 100)})`)

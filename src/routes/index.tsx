@@ -213,7 +213,7 @@ function HomePage() {
       try {
         const arrayBuffer = reader.result as ArrayBuffer;
         const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: true });
-        const ws = wb.Sheets[wb.SheetNames[0]];
+        const ws = wb.Sheets[wb.SheetNames[0]!];
         const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: "" });
         const headerLabels = (rows[0] || []).map((header) => String(header));
         const headers = headerLabels.map((header) =>
@@ -244,8 +244,8 @@ function HomePage() {
             debit: headerLabels[debitIndex] || "Débito",
             balance: headerLabels[balanceIndex] || "Saldo",
           },
-          periodStart: dates[0],
-          periodEnd: dates[dates.length - 1],
+          periodStart: dates[0]!,
+          periodEnd: dates[dates.length - 1]!,
           totalDebitCents,
         };
         importMutation.mutate(
@@ -259,7 +259,7 @@ function HomePage() {
           {
             onSuccess: (shared) => {
               setEntries(shared.map(toEntry));
-              setImportSummary({ count: imported.length, start: dates[0], end: dates[dates.length - 1], total: totalDebitCents / 100 });
+              setImportSummary({ count: imported.length, start: dates[0]!, end: dates[dates.length - 1]!, total: totalDebitCents / 100 });
               toast.success(`${imported.length} lançamentos importados e compartilhados. A planilha agora é a fonte central do fluxo.`);
             },
             onError: () => toast.error("Não foi possível atualizar o fluxo compartilhado."),

@@ -10,7 +10,7 @@ export type SharedEntry = {
 };
 
 export type ImportMeta = {
-  fileName?: string;
+  fileName?: string | undefined;
   mappedColumns: Record<string, string>;
   periodStart: string;
   periodEnd: string;
@@ -18,10 +18,10 @@ export type ImportMeta = {
 };
 
 export type Actor = {
-  actorName?: string;
-  ipAddress?: string;
-  userAgent?: string;
-  route?: string;
+  actorName?: string | undefined;
+  ipAddress?: string | undefined;
+  userAgent?: string | undefined;
+  route?: string | undefined;
 };
 
 function ttlCutoffIso() {
@@ -139,7 +139,7 @@ export async function replaceImportedEntries(input: {
 }
 
 export async function confirmPurchaseEntries(input: {
-  entries: { date: string; debitCents: number; termDays?: number }[];
+  entries: { date: string; debitCents: number; termDays?: number | undefined }[];
   actor: Actor;
 }): Promise<SharedEntry[]> {
   const totalCents = input.entries.reduce((sum, entry) => sum + entry.debitCents, 0);
