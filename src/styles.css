@@ -137,3 +137,29 @@
 .increase-row b { color:#b42318; font-size:16px; }
 .increase-row small { grid-column:1 / -1; color:#6b7280; font-size:13px; }
 @media (max-width:700px) { .comparison-content { grid-template-columns:1fr; gap:14px; } }
+
+/* Ajustes: fluxo em duas colunas, auditoria em duas colunas e usuários conhecidos */
+.flow-columns { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+.flow-columns .timeline-card { margin-bottom:0; }
+.flow-columns .critical-card { margin-bottom:0; }
+.audit-columns { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:16px; align-items:start; }
+.audit-columns .import-comparison-card { margin-top:0; }
+.comparison-content-stacked { grid-template-columns:1fr; }
+.known-users-card { margin-top:16px; }
+.known-user-list { display:grid; padding:6px 20px 4px; }
+.known-user-row { display:grid; grid-template-columns:minmax(140px,.7fr) minmax(200px,1.3fr) auto; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid #edf0f2; }
+.known-user-row:last-child { border-bottom:0; }
+.known-user-row strong { color:#20262d; font-size:15px; }
+.known-user-row span { color:#6b7280; font-size:13px; overflow-wrap:anywhere; }
+.known-user-row input { padding:9px 11px; border:1px solid #d5d9df; border-radius:6px; font-size:14px; }
+.known-user-actions { display:flex; gap:8px; }
+.known-user-form { display:grid; grid-template-columns:minmax(200px,1.2fr) minmax(160px,.8fr) auto; gap:12px; align-items:end; padding:16px 20px 20px; border-top:1px solid #edf0f2; }
+.known-user-form label { display:grid; gap:6px; color:#4b5563; font-size:12px; font-weight:600; }
+.known-user-form input, .identify-form input { padding:9px 11px; border:1px solid #d5d9df; border-radius:6px; font-size:13px; }
+.identify-form { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.identify-form .btn { padding:7px 12px; font-size:12px; }
+.identify-btn { display:inline-flex; align-items:center; gap:5px; margin-top:8px; padding:5px 10px; border:1px solid #d5d9df; border-radius:6px; background:#fff; color:#374151; font-size:12px; font-weight:600; cursor:pointer; }
+.identify-btn:hover { border-color:#9aa3ad; color:#111827; }
+.audit-unidentified { color:#b42318; font-weight:600; }
+@media (max-width:1000px) { .flow-columns, .audit-columns { grid-template-columns:1fr; } }
+@media (max-width:600px) { .known-user-row { grid-template-columns:1fr; gap:6px; } .known-user-actions { justify-content:flex-start; } .known-user-form { grid-template-columns:1fr; } }
