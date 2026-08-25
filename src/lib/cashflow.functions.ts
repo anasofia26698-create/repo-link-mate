@@ -137,3 +137,43 @@ export const getImportComparison = createServerFn({ method: "POST" })
     const { importComparison } = await import("./cashflow.server");
     return importComparison();
   });
+
+function requireAuditPassword(password: string) {
+  return import("./purchaseRules").then(({ isPurchaseAccessGranted }) => {
+    if (!isPurchaseAccessGranted(password)) {
+      throw new Error("Senha incorreta.");
+    }
+  });
+}
+
+export const listKnownIpUsers = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string() }).parse(data))
+  .handler(async ({ data }) => {
+    await requireAuditPassword(data.password);
+    const { listKnownIpUsers: listUsers } = await import("./cashflow.server");
+    return listUsers();
+  });
+
+export const saveKnownIpUser = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        password: z.string(),
+        ipAddress: z.string().trim().min(3).max(64),
+        userName: z.string().trim().min(1).max(120),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requireAuditPassword(data.password);
+    const { saveKnownIpUser: save } = await import("./cashflow.server");
+    return save({ ipAddress: data.ipAddress, userName: data.userName });
+  });
+
+export const deleteKnownIpUser = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string(), id: z.number().int() }).parse(data))
+  .handler(async ({ data }) => {
+    await requireAuditPassword(data.password);
+    const { removeKnownIpUser } = await import("./cashflow.server");
+    return removeKnownIpUser(data.id);
+  });
