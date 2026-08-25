@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { AlertTriangle, Menu, WalletCards, X } from "lucide-react";
+import { AlertTriangle, Menu, Plus, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
