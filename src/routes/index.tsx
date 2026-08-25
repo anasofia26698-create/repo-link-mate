@@ -425,23 +425,24 @@ function HomePage() {
                             <span>{scenario.isCritical ? "Limite crítico" : "Meta do dia"}</span>
                             <strong>{money(scenario.limit)}</strong>
                           </div>
-                          {scenario.existing > scenario.limit ? (
-                            <div>
-                              <span>Valor ultrapassado da meta diária</span>
-                              <strong className="red-text">{money(scenario.existing - scenario.limit)}</strong>
-                            </div>
-                          ) : (
+                          {scenario.existing <= scenario.limit && (
                             <div>
                               <span>Disponível para compra no dia</span>
                               <strong className="green-text">{money(scenario.limit - scenario.existing)}</strong>
                             </div>
                           )}
                         </div>
-                        <p>
-                          {scenario.canBuy
-                            ? "Débitos existentes + parcela ficam dentro do limite."
-                            : "Débitos existentes + parcela ultrapassam o limite."}
-                        </p>
+                        {scenario.existing > scenario.limit ? (
+                          <div className="scenario-alert">
+                            <div className="scenario-alert-main">
+                              Valor ultrapassado da meta diária
+                              <strong>{money(scenario.existing - scenario.limit)}</strong>
+                            </div>
+                            <div className="scenario-alert-support">Débitos existentes + parcela ultrapassam o limite.</div>
+                          </div>
+                        ) : (
+                          <p>Débitos existentes + parcela ficam dentro do limite.</p>
+                        )}
                       </div>
                     ))}
                   </div>
