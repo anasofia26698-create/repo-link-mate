@@ -246,6 +246,7 @@ export async function importComparison(): Promise<ImportComparison> {
   if (runs.length < 2) return { runs, changes: [] };
 
   const currentRun = runs[0];
+  if (!currentRun) return { runs, changes: [] };
   const previousRuns = runs.slice(1, 6);
   const runIds = [currentRun.id, ...previousRuns.map((run) => run.id)];
 
@@ -273,7 +274,7 @@ export async function importComparison(): Promise<ImportComparison> {
   }
 
   for (const [key, cents] of perRunDate) {
-    const date = key.split("|")[1];
+    const date = key.split("|")[1]!;
     previousByDate.set(date, [...(previousByDate.get(date) ?? []), cents]);
   }
 

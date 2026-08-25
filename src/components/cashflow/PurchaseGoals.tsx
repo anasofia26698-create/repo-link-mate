@@ -216,7 +216,7 @@ export function PurchasesDashboardTab() {
     reader.onload = () => {
       try {
         const wb = XLSX.read(reader.result, { type: "array", cellDates: true });
-        const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]!], { header: 1, defval: "" });
+        const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]!]!, { header: 1, defval: "" });
         const headers = (sheetRows[0] || []).map((header) =>
           String(header).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""),
         );
