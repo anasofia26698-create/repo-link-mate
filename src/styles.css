@@ -98,7 +98,8 @@
 .confirmation-modal { width: min(100%, 560px); }
 .scenario-alert { margin-top: 12px; padding: 16px; text-align: center; background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 8px; display: grid; gap: 6px; color: #17191c; }
 .scenario-alert-main { font-size: 15px; font-weight: 600; }
-.scenario-alert-main strong { display: block; margin-top: 2px; font-size: 20px; color: #111827; }
+.scenario-alert-main strong { display: block; margin-top: 2px; font-size: 20px; }
+.scenario-alert-main strong:not(.green-text):not(.red-text) { color: #111827; }
 .scenario-alert-support { font-size: 13px; color: #6b7280; }
 .confirmation-terms { display: grid; gap: 10px; padding: 0 20px 20px; }
 .confirmation-term { display: flex; grid-template-columns: auto 1fr; align-items: center; gap: 12px; padding: 13px 14px; border: 1px solid #dfe2e6; border-radius: 8px; background: #fafafa; cursor: pointer; }
