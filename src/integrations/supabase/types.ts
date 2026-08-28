@@ -53,6 +53,84 @@ export type Database = {
         }
         Relationships: []
       }
+      buyer_budgets: {
+        Row: {
+          buyer: string
+          created_at: string
+          id: number
+          monthly_cents: number
+          period: string
+          updated_at: string
+        }
+        Insert: {
+          buyer: string
+          created_at?: string
+          id?: never
+          monthly_cents?: number
+          period: string
+          updated_at?: string
+        }
+        Update: {
+          buyer?: string
+          created_at?: string
+          id?: never
+          monthly_cents?: number
+          period?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      buyer_ips: {
+        Row: {
+          buyer: string
+          created_at: string
+          id: number
+          ip_address: string
+          updated_at: string
+        }
+        Insert: {
+          buyer: string
+          created_at?: string
+          id?: never
+          ip_address: string
+          updated_at?: string
+        }
+        Update: {
+          buyer?: string
+          created_at?: string
+          id?: never
+          ip_address?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      buyer_payments: {
+        Row: {
+          amount_cents: number
+          buyer: string
+          created_at: string
+          due_date: string
+          id: number
+          import_batch: string | null
+        }
+        Insert: {
+          amount_cents: number
+          buyer: string
+          created_at?: string
+          due_date: string
+          id?: never
+          import_batch?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          buyer?: string
+          created_at?: string
+          due_date?: string
+          id?: never
+          import_batch?: string | null
+        }
+        Relationships: []
+      }
       cash_flow_entries: {
         Row: {
           audit_event_id: number | null
