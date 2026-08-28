@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
@@ -50,6 +50,84 @@ export type Database = {
           user_agent?: string | null
           user_email?: string | null
           user_name?: string | null
+        }
+        Relationships: []
+      }
+      buyer_budgets: {
+        Row: {
+          buyer: string
+          created_at: string
+          id: number
+          monthly_cents: number
+          period: string
+          updated_at: string
+        }
+        Insert: {
+          buyer: string
+          created_at?: string
+          id?: never
+          monthly_cents?: number
+          period: string
+          updated_at?: string
+        }
+        Update: {
+          buyer?: string
+          created_at?: string
+          id?: never
+          monthly_cents?: number
+          period?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      buyer_ips: {
+        Row: {
+          buyer: string
+          created_at: string
+          id: number
+          ip_address: string
+          updated_at: string
+        }
+        Insert: {
+          buyer: string
+          created_at?: string
+          id?: never
+          ip_address: string
+          updated_at?: string
+        }
+        Update: {
+          buyer?: string
+          created_at?: string
+          id?: never
+          ip_address?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      buyer_payments: {
+        Row: {
+          amount_cents: number
+          buyer: string
+          created_at: string
+          due_date: string
+          id: number
+          import_batch: string | null
+        }
+        Insert: {
+          amount_cents: number
+          buyer: string
+          created_at?: string
+          due_date: string
+          id?: never
+          import_batch?: string | null
+        }
+        Update: {
+          amount_cents?: number
+          buyer?: string
+          created_at?: string
+          due_date?: string
+          id?: never
+          import_batch?: string | null
         }
         Relationships: []
       }
