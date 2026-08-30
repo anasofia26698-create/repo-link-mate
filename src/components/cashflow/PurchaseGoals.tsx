@@ -169,6 +169,19 @@ export function GoalsTab() {
           </table>
         </div>
       </section>
+      <section className="card rules-card">
+        <div className="card-heading">
+          <div>
+            <h2>Regras de dotação orçamentária e meta diária</h2>
+            <p>Base de cálculo do módulo Comprador — mantida visível para consulta.</p>
+          </div>
+        </div>
+        <ul className="rules-list">
+          {BUYER_BUSINESS_RULES.map((rule) => (
+            <li key={rule}>{rule}</li>
+          ))}
+        </ul>
+      </section>
     </PasswordGate>
   );
 }
