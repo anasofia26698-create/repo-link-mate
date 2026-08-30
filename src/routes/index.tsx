@@ -15,6 +15,7 @@ import { confirmPurchases, listCashFlow, recordAccess, recordSimulation, replace
 import { AuditTab } from "@/components/cashflow/AuditTab";
 import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
 import { ImportTab } from "@/components/cashflow/ImportTab";
+import { BuyerModule } from "@/components/buyer/BuyerModule";
 import { criticalLabel, dateBR, dayMonthBR, iso, money, parseBRL, parseTerms } from "@/components/cashflow/format";
 
 export const Route = createFileRoute("/")({
