@@ -308,6 +308,7 @@ function HomePage() {
           {nav("metas", "Cadastro de Metas")}
           {nav("dashboard", "Dashboard de Compras")}
           {nav("auditoria", "Auditoria")}
+          {nav("comprador", "Comprador")}
         </nav>
       </header>
       <main className="simple-main">
