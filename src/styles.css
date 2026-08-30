@@ -168,3 +168,34 @@
 .audit-unidentified { color:#b42318; font-weight:600; }
 @media (max-width:1000px) { .flow-columns, .audit-columns { grid-template-columns:1fr; } }
 @media (max-width:600px) { .known-user-row { grid-template-columns:1fr; gap:6px; } .known-user-actions { justify-content:flex-start; } .known-user-form { grid-template-columns:1fr; } }
+
+/* Módulo Comprador */
+.buyer-subnav { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+.buyer-subnav button { padding:9px 15px; border:1px solid #d5d9df; border-radius:999px; background:#fff; color:#4b5563; font-size:13px; font-weight:600; cursor:pointer; }
+.buyer-subnav button.active { background:#111827; border-color:#111827; color:#fff; }
+.buyer-ident-card { margin-bottom:16px; }
+.buyer-ident-body { display:grid; gap:12px; padding:14px 20px 20px; }
+.buyer-ident-line { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px; }
+.buyer-ident-line span { color:#6b7280; }
+.buyer-ident-body select { width:100%; padding:10px 11px; border:1px solid #d5d9df; border-radius:6px; background:#fff; color:#1f2937; font-size:13px; }
+.buyer-ip-form { display:grid; grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto; gap:8px; align-items:center; }
+.buyer-ip-form input, .buyer-ip-form select { padding:10px 11px; border:1px solid #d5d9df; border-radius:6px; background:#fff; color:#1f2937; font-size:13px; }
+.buyer-ip-list { display:grid; gap:8px; }
+.buyer-ip-item { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
+.buyer-ip-item span { display:grid; gap:2px; }
+.buyer-ip-item small { color:#6b7280; font-family:'IBM Plex Mono'; font-size:11px; }
+.rules-card { margin-bottom:16px; }
+.rules-list { display:grid; gap:9px; margin:0; padding:14px 20px 20px 38px; color:#374151; font-size:13px; line-height:1.5; }
+.buyer-month-list { display:grid; gap:12px; padding:14px 20px 20px; }
+.buyer-month-row { display:grid; gap:8px; padding:14px; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
+.buyer-month-head { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:14px; }
+.buyer-month-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+.buyer-month-metrics div { display:grid; gap:3px; }
+.buyer-month-metrics span { color:#6b7280; font-size:10px; }
+.buyer-month-metrics strong { font-size:13px; }
+.buyer-month-track { height:12px; overflow:hidden; border-radius:999px; background:#e8f3eb; }
+.buyer-month-fill { height:100%; border-radius:999px; background:#5ab77d; }
+.buyer-month-fill.warn { background:#e0b252; }
+.buyer-month-fill.over { background:#db786d; }
+.buyer-month-warning { color:#8b241c; font-size:12px; font-weight:600; }
+@media (max-width:700px) { .buyer-ip-form { grid-template-columns:1fr; } .buyer-month-metrics { grid-template-columns:1fr; } }

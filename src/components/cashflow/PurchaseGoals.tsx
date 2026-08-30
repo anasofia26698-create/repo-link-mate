@@ -8,6 +8,9 @@ import {
   isPurchaseAccessGranted,
 } from "@/lib/purchaseRules";
 import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { BUYERS, BUYER_BUSINESS_RULES } from "@/lib/buyerRules";
+import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -168,6 +171,19 @@ export function GoalsTab() {
             </tbody>
           </table>
         </div>
+      </section>
+      <section className="card rules-card">
+        <div className="card-heading">
+          <div>
+            <h2>Regras de dotação orçamentária e meta diária</h2>
+            <p>Base de cálculo do módulo Comprador — mantida visível para consulta.</p>
+          </div>
+        </div>
+        <ul className="rules-list">
+          {BUYER_BUSINESS_RULES.map((rule) => (
+            <li key={rule}>{rule}</li>
+          ))}
+        </ul>
       </section>
     </PasswordGate>
   );
@@ -391,7 +407,76 @@ export function PurchasesDashboardTab() {
           {!purchases.length && <div className="empty">Nenhuma compra registrada neste navegador.</div>}
         </div>
       </section>
+      <BuyerMonthlyPanel />
     </PasswordGate>
+  );
+}
+
+function BuyerMonthlyPanel() {
+  const period = new Date().toISOString().slice(0, 7);
+  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
+  const budgets = overview.data?.budgets ?? [];
+  const payments = overview.data?.payments ?? [];
+  const rows = BUYERS.map((buyer) => {
+    const found = budgets.find((item) => item.period === period && item.buyer === buyer) ?? budgets.find((item) => item.buyer === buyer);
+    const budget = (found?.monthlyCents ?? 0) / 100;
+    const usedPeriod = found?.period ?? period;
+    const bought =
+      payments
+        .filter((item) => item.buyer === buyer && item.date.slice(0, 7) === usedPeriod)
+        .reduce((sum, item) => sum + item.amountCents, 0) / 100;
+    const pct = budget > 0 ? (bought / budget) * 100 : 0;
+    return { buyer, budget, bought, available: budget - bought, pct, period: usedPeriod };
+  });
+  return (
+    <section className="card">
+      <div className="card-heading">
+        <div>
+          <h2>Atingimento mensal por comprador</h2>
+          <p>Dotação orçamentária do módulo Comprador (Marcelo, Suellen e Maurício).</p>
+        </div>
+        <BarChart3 size={21} />
+      </div>
+      <div className="buyer-month-list">
+        {overview.isLoading && <div className="empty">Carregando dotação por comprador...</div>}
+        {!overview.isLoading &&
+          rows.map((row) => (
+            <div className="buyer-month-row" key={row.buyer}>
+              <div className="buyer-month-head">
+                <strong>{row.buyer}</strong>
+                <span>
+                  {row.period} · {row.pct.toFixed(1).replace(".", ",")}%
+                </span>
+              </div>
+              <div className="buyer-month-metrics">
+                <div>
+                  <span>Dotação do mês</span>
+                  <strong>{money(row.budget)}</strong>
+                </div>
+                <div>
+                  <span>Comprado no mês</span>
+                  <strong>{money(row.bought)}</strong>
+                </div>
+                <div>
+                  <span>Disponível no mês</span>
+                  <strong className={row.available < 0 ? "red-text" : "green-text"}>{money(row.available)}</strong>
+                </div>
+              </div>
+              <div className="buyer-month-track">
+                <div
+                  className={"buyer-month-fill " + (row.pct >= 100 ? "over" : row.pct >= 80 ? "warn" : "")}
+                  style={{ width: `${Math.min(100, Math.max(0, row.pct))}%` }}
+                />
+              </div>
+              {row.pct >= 100 ? (
+                <div className="buyer-month-warning">Dotação mensal ultrapassada ({row.pct.toFixed(1).replace(".", ",")}%).</div>
+              ) : row.pct >= 80 ? (
+                <div className="buyer-month-warning">Atenção: acima de 80% da dotação mensal.</div>
+              ) : null}
+            </div>
+          ))}
+      </div>
+    </section>
   );
 }
 

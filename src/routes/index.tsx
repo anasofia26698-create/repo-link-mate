@@ -15,6 +15,7 @@ import { confirmPurchases, listCashFlow, recordAccess, recordSimulation, replace
 import { AuditTab } from "@/components/cashflow/AuditTab";
 import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
 import { ImportTab } from "@/components/cashflow/ImportTab";
+import { BuyerModule } from "@/components/buyer/BuyerModule";
 import { criticalLabel, dateBR, dayMonthBR, iso, money, parseBRL, parseTerms } from "@/components/cashflow/format";
 
 export const Route = createFileRoute("/")({
@@ -37,7 +38,7 @@ export const Route = createFileRoute("/")({
 });
 
 type Entry = { id: string; date: string; debit: number; source: "imported" | "manual"; createdAt?: number };
-type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria";
+type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
 
@@ -307,11 +308,14 @@ function HomePage() {
           {nav("metas", "Cadastro de Metas")}
           {nav("dashboard", "Dashboard de Compras")}
           {nav("auditoria", "Auditoria")}
+          {nav("comprador", "Comprador")}
         </nav>
       </header>
       <main className="simple-main">
         {tab === "auditoria" ? (
           <AuditTab />
+        ) : tab === "comprador" ? (
+          <BuyerModule />
         ) : tab === "fluxo" ? (
           <>
             <div className="page-heading page-heading-compact">
