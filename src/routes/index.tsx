@@ -314,6 +314,8 @@ function HomePage() {
       <main className="simple-main">
         {tab === "auditoria" ? (
           <AuditTab />
+        ) : tab === "comprador" ? (
+          <BuyerModule />
         ) : tab === "fluxo" ? (
           <>
             <div className="page-heading page-heading-compact">
