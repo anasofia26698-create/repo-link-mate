@@ -37,7 +37,7 @@ export const Route = createFileRoute("/")({
 });
 
 type Entry = { id: string; date: string; debit: number; source: "imported" | "manual"; createdAt?: number };
-type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria";
+type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
 
