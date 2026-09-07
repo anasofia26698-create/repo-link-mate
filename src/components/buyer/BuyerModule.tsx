@@ -393,7 +393,7 @@ function BuyerFlowArea({ password }: { password: string }) {
         <div className="card-heading">
           <div>
             <h2>Pagamentos por dia {buyer ? `— ${buyer}` : ""}</h2>
-            <p>Pagamentos importados da planilha, comparados com a meta do dia.</p>
+            <p>Planilha importada + compras confirmadas (válidas por 7 dias), comparadas com a meta do dia.</p>
           </div>
         </div>
         <div className="timeline-list">
