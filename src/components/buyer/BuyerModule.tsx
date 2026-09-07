@@ -12,6 +12,7 @@ import {
   type Buyer,
 } from "@/lib/buyerRules";
 import {
+  confirmBuyerPurchases,
   deleteBuyerIpAddress,
   getBuyerContext,
   importBuyerPayments,
