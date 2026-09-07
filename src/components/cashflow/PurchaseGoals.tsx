@@ -1,6 +1,5 @@
-import { useState, type ReactNode } from "react";
-import * as XLSX from "xlsx";
-import { AlertTriangle, BarChart3, LockKeyhole, Save, Trash2, Upload } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, BarChart3, LockKeyhole, Save } from "lucide-react";
 import {
   calculateConsumption,
   calculatePurchaseBudget,
@@ -8,9 +7,9 @@ import {
   isPurchaseAccessGranted,
 } from "@/lib/purchaseRules";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES } from "@/lib/buyerRules";
-import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
+import { getBuyerMonthlyOverview, saveBuyerGoalBudget } from "@/lib/buyer.functions";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
