@@ -171,6 +171,7 @@ export function GoalsTab() {
           </table>
         </div>
       </section>
+      <BuyerGoalsForm />
       <section className="card rules-card">
         <div className="card-heading">
           <div>
