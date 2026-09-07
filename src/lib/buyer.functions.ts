@@ -91,6 +91,22 @@ export const saveBuyerMonthlyBudget = createServerFn({ method: "POST" })
     return saveBuyerBudget({ period: data.period, buyer: data.buyer, monthlyCents: data.monthlyCents });
   });
 
+/** Cadastro de meta mensal por comprador feito na aba Cadastro de Metas (já protegida por senha própria). */
+export const saveBuyerGoalBudget = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) =>
+    z
+      .object({
+        period: z.string().regex(/^\d{4}-\d{2}$/),
+        buyer: z.string().trim().min(1).max(60),
+        monthlyCents: z.number().int().min(0),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    const { saveBuyerBudget } = await import("./buyer.server");
+    return saveBuyerBudget({ period: data.period, buyer: data.buyer, monthlyCents: data.monthlyCents });
+  });
+
 /** Visão mensal pública do módulo, usada pelo Dashboard de Compras. */
 export const getBuyerMonthlyOverview = createServerFn({ method: "GET" }).handler(async () => {
   const server = await import("./buyer.server");
