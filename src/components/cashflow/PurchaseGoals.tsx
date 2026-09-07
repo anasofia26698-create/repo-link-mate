@@ -189,6 +189,86 @@ export function GoalsTab() {
   );
 }
 
+function BuyerGoalsForm() {
+  const queryClient = useQueryClient();
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
+  const budgets = overview.data?.budgets ?? [];
+
+  useEffect(() => {
+    const next: Record<string, string> = {};
+    for (const buyer of BUYERS) {
+      const found = budgets.find((item) => item.period === period && item.buyer === buyer);
+      next[buyer] = found ? (found.monthlyCents / 100).toFixed(2).replace(".", ",") : "";
+    }
+    setValues(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, overview.dataUpdatedAt]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      for (const buyer of BUYERS) {
+        const monthlyCents = Math.round(parseBRL(values[buyer] ?? "") * 100);
+        await saveBuyerGoalBudget({ data: { period, buyer, monthlyCents } });
+      }
+      await queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] });
+      toast.success("Metas por comprador salvas.");
+    } catch {
+      toast.error("Não foi possível salvar as metas por comprador.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="card goals-card">
+      <div className="card-heading">
+        <div>
+          <h2>Meta por comprador</h2>
+          <p>Dotação mensal de cada comprador — alimenta o Dashboard de Compras.</p>
+        </div>
+        <button className="btn btn-dark" onClick={save} disabled={saving}>
+          <Save size={17} /> {saving ? "Salvando..." : "Salvar metas"}
+        </button>
+      </div>
+      <div className="goals-table-wrap">
+        <table className="goals-table">
+          <thead>
+            <tr>
+              <th>Comprador</th>
+              <th>Período</th>
+              <th>Dotação mensal (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {BUYERS.map((buyer) => (
+              <tr key={buyer}>
+                <td>
+                  <strong>{buyer}</strong>
+                </td>
+                <td>
+                  <input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
+                </td>
+                <td>
+                  <input
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={values[buyer] ?? ""}
+                    onChange={(event) => setValues((current) => ({ ...current, [buyer]: event.target.value }))}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function PurchasesDashboardTab() {
   const [goals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
   const [purchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
