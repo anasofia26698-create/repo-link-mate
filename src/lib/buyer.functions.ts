@@ -97,3 +97,29 @@ export const getBuyerMonthlyOverview = createServerFn({ method: "GET" }).handler
   const [payments, budgets] = await Promise.all([server.listBuyerPayments(), server.listBuyerBudgets()]);
   return { payments, budgets };
 });
+
+/** Confirmação de compra do comprador: entra no fluxo e expira em 7 dias. */
+export const confirmBuyerPurchases = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) =>
+    passwordSchema
+      .extend({
+        buyer: z.string().trim().min(1).max(60),
+        entries: z
+          .array(
+            z.object({
+              date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+              amountCents: z.number().int().min(1).max(100_000_000_00),
+            }),
+          )
+          .min(1)
+          .max(60),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data }) => {
+    await requirePassword(data.password);
+    const { confirmBuyerPurchase } = await import("./buyer.server");
+    return confirmBuyerPurchase({
+      entries: data.entries.map((entry) => ({ ...entry, buyer: data.buyer })),
+    });
+  });
