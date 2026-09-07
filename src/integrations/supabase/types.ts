@@ -112,6 +112,7 @@ export type Database = {
           due_date: string
           id: number
           import_batch: string | null
+          source: string
         }
         Insert: {
           amount_cents: number
@@ -120,6 +121,7 @@ export type Database = {
           due_date: string
           id?: never
           import_batch?: string | null
+          source?: string
         }
         Update: {
           amount_cents?: number
@@ -128,6 +130,7 @@ export type Database = {
           due_date?: string
           id?: never
           import_batch?: string | null
+          source?: string
         }
         Relationships: []
       }
