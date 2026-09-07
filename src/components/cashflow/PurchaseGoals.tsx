@@ -349,64 +349,6 @@ export function PurchasesDashboardTab() {
           ))}
         </div>
       </section>
-      <section className="card purchase-entry-card">
-        <div className="card-heading">
-          <div>
-            <h2>Registrar compras realizadas</h2>
-            <p>Importe ou registre as compras do mês para alimentar o dashboard.</p>
-          </div>
-          <label className="upload-small">
-            <Upload size={16} /> Importar
-            <input type="file" accept=".xlsx,.xls,.csv" onChange={(event) => importPurchases(event.target.files?.[0])} />
-          </label>
-        </div>
-        <div className="purchase-form">
-          <label>
-            Data
-            <input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} />
-          </label>
-          <label>
-            Setor
-            <select value={form.sector} onChange={(event) => setForm({ ...form, sector: event.target.value as Sector })}>
-              {SECTORS.map((sector) => (
-                <option key={sector}>{sector}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Fornecedor
-            <input value={form.supplier} onChange={(event) => setForm({ ...form, supplier: event.target.value })} />
-          </label>
-          <label>
-            Valor (R$)
-            <input inputMode="decimal" placeholder="0,00" value={form.value} onChange={(event) => setForm({ ...form, value: event.target.value })} />
-          </label>
-          <label>
-            Nº da Nota
-            <input value={form.invoice} onChange={(event) => setForm({ ...form, invoice: event.target.value })} />
-          </label>
-          <button className="btn btn-dark" onClick={savePurchase}>
-            Registrar
-          </button>
-        </div>
-        <div className="purchase-list">
-          {purchases.map((item) => (
-            <div className="purchase-item" key={item.id}>
-              <span>
-                <strong>{item.sector}</strong> · {item.supplier}
-                <small>
-                  {item.date} · NF {item.invoice || "—"}
-                </small>
-              </span>
-              <b>{money(item.value)}</b>
-              <button className="icon-btn" onClick={() => removePurchase(item.id)} aria-label="Excluir compra">
-                <Trash2 size={16} />
-              </button>
-            </div>
-          ))}
-          {!purchases.length && <div className="empty">Nenhuma compra registrada neste navegador.</div>}
-        </div>
-      </section>
       <BuyerMonthlyPanel />
     </PasswordGate>
   );
