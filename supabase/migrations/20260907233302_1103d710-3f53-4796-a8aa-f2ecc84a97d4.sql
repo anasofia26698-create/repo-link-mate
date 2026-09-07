@@ -1,0 +1,2 @@
+ALTER TABLE public.buyer_payments ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'imported';
+CREATE INDEX IF NOT EXISTS buyer_payments_source_created_idx ON public.buyer_payments (source, created_at);
