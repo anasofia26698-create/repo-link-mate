@@ -106,6 +106,7 @@ function BuyerFlowArea({ password }: { password: string }) {
 
   const saveIp = useMutation({ mutationFn: saveBuyerIpAddress });
   const removeIp = useMutation({ mutationFn: deleteBuyerIpAddress });
+  const confirmPurchase = useMutation({ mutationFn: confirmBuyerPurchases });
 
   const period = today.slice(0, 7);
   const monthlyBudget = useMemo(() => {
@@ -350,6 +351,39 @@ function BuyerFlowArea({ password }: { password: string }) {
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="scenario-alert">
+              <div className="scenario-alert-main">Confirmação de compra</div>
+              <div className="scenario-alert-support">
+                Ao confirmar, as parcelas entram no fluxo de caixa de {buyer} e saem automaticamente após 7 dias.
+              </div>
+              <button
+                className="btn btn-primary full"
+                disabled={confirmPurchase.isPending}
+                onClick={() => {
+                  confirmPurchase.mutate(
+                    {
+                      data: {
+                        password,
+                        buyer,
+                        entries: scenarios.map((scenario) => ({
+                          date: scenario.date,
+                          amountCents: Math.round(scenario.installment * 100),
+                        })),
+                      },
+                    },
+                    {
+                      onSuccess: () => {
+                        toast.success("Compra confirmada e incluída no fluxo por 7 dias.");
+                        context.refetch();
+                      },
+                      onError: () => toast.error("Não foi possível confirmar a compra."),
+                    },
+                  );
+                }}
+              >
+                Confirmar compra nessas parcelas
+              </button>
             </div>
           </section>
         )}
