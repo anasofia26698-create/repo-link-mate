@@ -191,14 +191,7 @@ export function GoalsTab() {
 
 export function PurchasesDashboardTab() {
   const [goals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
-  const [purchases, setPurchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
-  const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    sector: SECTORS[0] as Sector,
-    supplier: "",
-    value: "",
-    invoice: "",
-  });
+  const [purchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
   const rows = goals.map((goal) => {
     const budget = calculatePurchaseBudget(goal.sales, goal.cmv, goal.initialStock, goal.finalStock);
     const bought = purchases.filter((item) => item.sector === goal.sector).reduce((sum, item) => sum + item.value, 0);
