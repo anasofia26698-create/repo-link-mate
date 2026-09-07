@@ -2,7 +2,18 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Buyer } from "./buyerRules";
 
 export type BuyerIp = { id: number; ipAddress: string; buyer: string };
-export type BuyerPayment = { date: string; buyer: string; amountCents: number };
+export type BuyerPayment = { date: string; buyer: string; amountCents: number; source: "imported" | "confirmed" };
+
+/** Compras confirmadas pelos compradores valem por 7 dias no fluxo. */
+const CONFIRMED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export async function purgeExpiredBuyerConfirmations() {
+  await supabaseAdmin
+    .from("buyer_payments")
+    .delete()
+    .eq("source", "confirmed")
+    .lt("created_at", new Date(Date.now() - CONFIRMED_TTL_MS).toISOString());
+}
 export type BuyerBudget = { period: string; buyer: string; monthlyCents: number };
 
 const normalizeIp = (ip: string) => ip.trim().toLowerCase();
@@ -49,9 +60,10 @@ export async function buyerForIp(ipAddress: string | undefined): Promise<string 
 }
 
 export async function listBuyerPayments(): Promise<BuyerPayment[]> {
+  await purgeExpiredBuyerConfirmations();
   const { data, error } = await supabaseAdmin
     .from("buyer_payments")
-    .select("due_date,buyer,amount_cents")
+    .select("due_date,buyer,amount_cents,source")
     .order("due_date", { ascending: true })
     .limit(50000);
   if (error) throw new Error(error.message);
@@ -59,16 +71,36 @@ export async function listBuyerPayments(): Promise<BuyerPayment[]> {
     date: row.due_date as string,
     buyer: row.buyer as string,
     amountCents: Number(row.amount_cents),
+    source: ((row as { source?: string }).source === "confirmed" ? "confirmed" : "imported") as "imported" | "confirmed",
   }));
 }
 
-/** Substitui todos os pagamentos dos compradores importados pela nova planilha. */
+/** Compras confirmadas pelo comprador entram no fluxo e expiram em 7 dias. */
+export async function confirmBuyerPurchase(input: {
+  entries: { date: string; buyer: Buyer | string; amountCents: number }[];
+}): Promise<BuyerPayment[]> {
+  if (input.entries.length) {
+    const { error } = await supabaseAdmin.from("buyer_payments").insert(
+      input.entries.map((entry) => ({
+        due_date: entry.date,
+        buyer: entry.buyer,
+        amount_cents: entry.amountCents,
+        source: "confirmed",
+        import_batch: null,
+      })),
+    );
+    if (error) throw new Error(error.message);
+  }
+  return listBuyerPayments();
+}
+
+/** Substitui apenas os pagamentos importados da planilha (confirmações são preservadas). */
 export async function replaceBuyerPayments(input: {
   entries: { date: string; buyer: Buyer | string; amountCents: number }[];
   fileName?: string | undefined;
 }): Promise<BuyerPayment[]> {
   const batch = `${Date.now()}-${input.fileName ?? "planilha"}`.slice(0, 120);
-  const { error: deleteError } = await supabaseAdmin.from("buyer_payments").delete().gt("id", 0);
+  const { error: deleteError } = await supabaseAdmin.from("buyer_payments").delete().eq("source", "imported");
   if (deleteError) throw new Error(deleteError.message);
   if (input.entries.length) {
     const { error } = await supabaseAdmin.from("buyer_payments").insert(
@@ -77,6 +109,7 @@ export async function replaceBuyerPayments(input: {
         buyer: entry.buyer,
         amount_cents: entry.amountCents,
         import_batch: batch,
+        source: "imported",
       })),
     );
     if (error) throw new Error(error.message);
