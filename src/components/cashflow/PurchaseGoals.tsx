@@ -202,68 +202,6 @@ export function PurchasesDashboardTab() {
     (acc, row) => ({ budget: acc.budget + row.budget, bought: acc.bought + row.bought, balance: acc.balance + row.balance }),
     { budget: 0, bought: 0, balance: 0 },
   );
-  const savePurchase = () => {
-    const value = parseBRL(form.value);
-    if (!form.date || !form.supplier || value <= 0) {
-      toast.error("Informe data, fornecedor e valor válido.");
-      return;
-    }
-    const next = [...purchases, { id: crypto.randomUUID(), date: form.date, sector: form.sector, supplier: form.supplier, value, invoice: form.invoice }];
-    setPurchases(next);
-    localStorage.setItem(PURCHASES_KEY, JSON.stringify(next));
-    setForm({ ...form, supplier: "", value: "", invoice: "" });
-    toast.success("Compra registrada.");
-  };
-  const removePurchase = (id: string) => {
-    const next = purchases.filter((item) => item.id !== id);
-    setPurchases(next);
-    localStorage.setItem(PURCHASES_KEY, JSON.stringify(next));
-  };
-  const importPurchases = (file?: File) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const wb = XLSX.read(reader.result, { type: "array", cellDates: true });
-        const sheetRows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]!]!, { header: 1, defval: "" });
-        const headers = (sheetRows[0] || []).map((header) =>
-          String(header).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""),
-        );
-        const idx = {
-          date: headers.findIndex((header) => header.includes("data")),
-          sector: headers.findIndex((header) => header.includes("setor")),
-          supplier: headers.findIndex((header) => header.includes("fornecedor")),
-          value: headers.findIndex((header) => header.includes("valor")),
-          invoice: headers.findIndex((header) => header.includes("nota")),
-        };
-        const valid = sheetRows
-          .slice(1)
-          .map((row) => {
-            const date = row[idx.date] instanceof Date ? (row[idx.date] as Date).toISOString().slice(0, 10) : String(row[idx.date] || "");
-            const sector = (SECTORS.find((item) => item.toLowerCase() === String(row[idx.sector] || "").toLowerCase()) ?? SECTORS[0]) as Sector;
-            const value = typeof row[idx.value] === "number" ? (row[idx.value] as number) : parseBRL(String(row[idx.value] || ""));
-            return date && value > 0
-              ? {
-                  id: crypto.randomUUID(),
-                  date,
-                  sector,
-                  supplier: String(row[idx.supplier] || "Não informado"),
-                  value,
-                  invoice: String(row[idx.invoice] || ""),
-                }
-              : null;
-          })
-          .filter(Boolean) as Purchase[];
-        const next = [...purchases, ...valid];
-        setPurchases(next);
-        localStorage.setItem(PURCHASES_KEY, JSON.stringify(next));
-        toast.success(`${valid.length} compra(s) importada(s).`);
-      } catch {
-        toast.error("Não foi possível ler o arquivo de compras.");
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  };
   return (
     <PasswordGate>
       <div className="page-heading page-heading-compact">
