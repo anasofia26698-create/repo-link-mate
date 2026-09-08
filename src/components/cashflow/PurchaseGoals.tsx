@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { getBuyerMonthlyOverview, saveBuyerGoalBudget } from "@/lib/buyer.functions";
+import { getBuyerGoalConfigs, getBuyerMonthlyOverview, getLineGoals, saveBuyerGoalBudget, saveBuyerGoalConfig, saveLineGoals } from "@/lib/buyer.functions";
 import { money } from "./format";
 
 export const SECTORS = [
@@ -90,6 +90,7 @@ function PasswordGate({ children }: { children: ReactNode }) {
 
 type BuyerProfile = { name: string; ips: string; active: boolean };
 type MonthlyBuyerConfig = { sales: string; cmv: string; coverage: string; salesPurchases: string };
+type LineGoalForm = { id?: number; lineName: string; sales: string };
 
 const BUYER_PROFILES_KEY = "signal-cash-buyer-profiles-v1";
 const BUYER_MONTHLY_CONFIG_KEY = "signal-cash-buyer-monthly-config-v1";
@@ -144,9 +145,11 @@ function BuyerGoalsForm() {
   const [profiles, setProfiles] = useState<Record<string, BuyerProfile>>(() => read(BUYER_PROFILES_KEY, DEFAULT_PROFILES));
   const [monthly, setMonthly] = useState<Record<string, MonthlyBuyerConfig>>(() => read(BUYER_MONTHLY_CONFIG_KEY, {}));
   const [parameters, setParameters] = useState(() => read(BUYER_PARAMETERS_KEY, DEFAULT_PARAMETERS));
-  const [lineGoals, setLineGoals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
+  const [lineGoals, setLineGoals] = useState<LineGoalForm[]>(() => SECTORS.map((sector) => ({ lineName: sector, sales: "" })));
   const [saving, setSaving] = useState(false);
   const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
+  const goalConfigs = useQuery({ queryKey: ["buyer-goal-configs", period], queryFn: () => getBuyerGoalConfigs({ data: { period } }) });
+  const storedLineGoals = useQuery({ queryKey: ["line-goals", period], queryFn: () => getLineGoals({ data: { period } }) });
   const budgets = overview.data?.budgets ?? [];
   const currentMonthly = BUYERS.reduce<Record<string, MonthlyBuyerConfig>>((result, buyer) => {
     result[buyer] = monthly[`${period}:${buyer}`] ?? emptyMonthlyConfig();
@@ -157,14 +160,24 @@ function BuyerGoalsForm() {
     const next = { ...monthly };
     for (const buyer of BUYERS) {
       const key = `${period}:${buyer}`;
-      if (!next[key]) {
-        const found = budgets.find((item) => item.period === period && item.buyer === buyer);
-        next[key] = found ? { ...emptyMonthlyConfig(), sales: formatInput(found.monthlyCents / 100 / 0.6) } : emptyMonthlyConfig();
-      }
+      const config = goalConfigs.data?.find((item) => item.buyer === buyer);
+      const budget = budgets.find((item) => item.period === period && item.buyer === buyer);
+      next[key] = config
+        ? { sales: formatInput(config.salesCents / 100), cmv: String(config.cmvPercent), coverage: "", salesPurchases: "" }
+        : budget
+          ? { ...emptyMonthlyConfig(), sales: formatInput(budget.monthlyCents / 100 / 0.6) }
+          : next[key] ?? emptyMonthlyConfig();
     }
     setMonthly(next);
+    if (goalConfigs.data?.length) {
+      setProfiles((current) => Object.fromEntries(BUYERS.map((buyer) => {
+        const config = goalConfigs.data?.find((item) => item.buyer === buyer);
+        return [buyer, { ...(current[buyer] ?? DEFAULT_PROFILES[buyer]), ips: config?.ips.join(", ") ?? current[buyer]?.ips ?? "" }];
+      })));
+    }
+    if (storedLineGoals.data) setLineGoals(storedLineGoals.data.map((goal) => ({ id: goal.id, lineName: goal.lineName, sales: formatInput(goal.salesCents / 100) })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, overview.dataUpdatedAt]);
+  }, [period, overview.dataUpdatedAt, goalConfigs.dataUpdatedAt, storedLineGoals.dataUpdatedAt]);
 
   const updateMonthly = (buyer: string, field: keyof MonthlyBuyerConfig, value: string) => {
     const key = `${period}:${buyer}`;
@@ -176,19 +189,27 @@ function BuyerGoalsForm() {
   const save = async () => {
     setSaving(true);
     try {
-      localStorage.setItem(BUYER_PROFILES_KEY, JSON.stringify(profiles));
-      localStorage.setItem(BUYER_MONTHLY_CONFIG_KEY, JSON.stringify(monthly));
-      localStorage.setItem(BUYER_PARAMETERS_KEY, JSON.stringify(parameters));
-      localStorage.setItem(GOALS_KEY, JSON.stringify(lineGoals));
       for (const buyer of BUYERS) {
         const monthlyConfig = currentMonthly[buyer];
-        const monthlyCents = Math.round(numericValue(monthlyConfig.sales) * (numericValue(parameters.allocationPercent) / 100) * 100);
-        await saveBuyerGoalBudget({ data: { period, buyer, monthlyCents } });
+        const sales = numericValue(monthlyConfig.sales);
+        const cmv = numericValue(monthlyConfig.cmv);
+        const ips = (profiles[buyer]?.ips ?? "").split(/[\s,;]+/).map((ip) => ip.trim()).filter(Boolean);
+        if (sales <= 0 || cmv <= 0 || ips.some((ip) => !/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip) && !/^[0-9a-f:]+$/i.test(ip))) throw new Error(`Preencha venda, CMV e IPs válidos de ${buyer}.`);
+        await saveBuyerGoalConfig({ data: { period, buyer, salesCents: Math.round(sales * 100), cmvPercent: cmv, ips } });
+        await saveBuyerGoalBudget({ data: { period, buyer, monthlyCents: Math.round(sales * (numericValue(parameters.allocationPercent) / 100) * 100) } });
       }
-      await queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] });
+      const linePayload = lineGoals.map((goal) => ({ id: goal.id, lineName: goal.lineName.trim(), salesCents: Math.round(numericValue(goal.sales) * 100) }));
+      if (linePayload.some((goal) => !goal.lineName || goal.salesCents <= 0)) throw new Error("Preencha o nome e a venda prevista de todas as linhas.");
+      await saveLineGoals({ data: { period, goals: linePayload } });
+      localStorage.setItem(BUYER_PARAMETERS_KEY, JSON.stringify(parameters));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["buyer-goal-configs", period] }),
+        queryClient.invalidateQueries({ queryKey: ["line-goals", period] }),
+      ]);
       toast.success("Cadastro de metas salvo e cálculos atualizados.");
-    } catch {
-      toast.error("Não foi possível salvar o cadastro de metas.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o cadastro de metas.");
     } finally {
       setSaving(false);
     }
@@ -202,9 +223,9 @@ function BuyerGoalsForm() {
           <div className="card-heading">
             <div><h2>Metas por linha</h2><p>Venda prevista por linha de produto.</p></div>
           </div>
-          <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Linha de produto</th><th>Período</th><th>Venda prevista</th></tr></thead><tbody>
-            {lineGoals.map((goal, index) => <tr key={goal.sector}><td><strong>{goal.sector}</strong></td><td>{goal.period}</td><td><input inputMode="decimal" value={goal.sales || ""} placeholder="0,00" onChange={(event) => setLineGoals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sales: numericValue(event.target.value) } : item))} /></td></tr>)}
-          </tbody></table></div>
+          <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Linha</th><th>Período</th><th>Venda prevista</th><th>Ação</th></tr></thead><tbody>
+            {lineGoals.map((goal, index) => <tr key={goal.id ?? index}><td><input value={goal.lineName} placeholder="Linha A" onChange={(event) => setLineGoals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lineName: event.target.value } : item))} /></td><td>{period}</td><td><input inputMode="decimal" value={goal.sales} placeholder="0,00" onChange={(event) => setLineGoals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sales: event.target.value } : item))} /></td><td><button type="button" className="icon-btn" aria-label="Remover linha" onClick={() => setLineGoals((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></td></tr>)}
+          </tbody></table></div><button type="button" className="btn btn-dark" onClick={() => setLineGoals((current) => [...current, { lineName: "", sales: "" }])}>Adicionar linha</button>
         </section>
 
         <section className="card goals-card">

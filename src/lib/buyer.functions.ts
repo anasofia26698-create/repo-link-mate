@@ -107,6 +107,43 @@ export const saveBuyerGoalBudget = createServerFn({ method: "POST" })
     return saveBuyerBudget({ period: data.period, buyer: data.buyer, monthlyCents: data.monthlyCents });
   });
 
+
+const goalConfigSchema = z.object({
+  period: z.string().regex(/^\d{4}-\d{2}$/),
+  buyer: z.string().trim().min(1).max(60),
+  salesCents: z.number().int().positive(),
+  cmvPercent: z.number().positive().max(100),
+  ips: z.array(z.string().trim().min(3).max(64)).max(50),
+});
+
+export const getBuyerGoalConfigs = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
+  .handler(async ({ data }) => {
+    const { listBuyerGoalConfigs } = await import("./buyer.server");
+    return listBuyerGoalConfigs(data.period);
+  });
+
+export const saveBuyerGoalConfig = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => goalConfigSchema.parse(data))
+  .handler(async ({ data }) => {
+    const { saveBuyerGoalConfig } = await import("./buyer.server");
+    return saveBuyerGoalConfig(data);
+  });
+
+export const getLineGoals = createServerFn({ method: "GET" })
+  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
+  .handler(async ({ data }) => {
+    const { listLineGoals } = await import("./buyer.server");
+    return listLineGoals(data.period);
+  });
+
+export const saveLineGoals = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), goals: z.array(z.object({ id: z.number().int().optional(), lineName: z.string().trim().min(1).max(100), salesCents: z.number().int().positive() })).max(100) }).parse(data))
+  .handler(async ({ data }) => {
+    const { replaceLineGoals } = await import("./buyer.server");
+    return replaceLineGoals(data);
+  });
+
 /** Visão mensal pública do módulo, usada pelo Dashboard de Compras. */
 export const getBuyerMonthlyOverview = createServerFn({ method: "GET" }).handler(async () => {
   const server = await import("./buyer.server");

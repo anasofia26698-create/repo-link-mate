@@ -14,6 +14,59 @@ export async function purgeExpiredBuyerConfirmations() {
     .eq("source", "confirmed")
     .lt("created_at", new Date(Date.now() - CONFIRMED_TTL_MS).toISOString());
 }
+
+export type BuyerGoalConfig = {
+  period: string;
+  buyer: string;
+  salesCents: number;
+  cmvPercent: number;
+  ips: string[];
+};
+
+export type LineGoal = { id: number; period: string; lineName: string; salesCents: number };
+
+const validIp = (ip: string) =>
+  /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip) || /^[0-9a-f:]+$/i.test(ip);
+
+export async function listBuyerGoalConfigs(period?: string): Promise<BuyerGoalConfig[]> {
+  let query = supabaseAdmin.from("buyer_goal_configs").select("period,buyer,sales_cents,cmv_percent,ips").order("buyer");
+  if (period) query = query.eq("period", period);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({ period: row.period as string, buyer: row.buyer as string, salesCents: Number(row.sales_cents), cmvPercent: Number(row.cmv_percent), ips: Array.isArray(row.ips) ? row.ips as string[] : [] }));
+}
+
+export async function saveBuyerGoalConfig(input: BuyerGoalConfig): Promise<BuyerGoalConfig[]> {
+  const ips = [...new Set(input.ips.map((ip) => ip.trim().toLowerCase()).filter(Boolean))];
+  if (ips.some((ip) => !validIp(ip))) throw new Error("Informe IPs válidos.");
+  const { error } = await supabaseAdmin.from("buyer_goal_configs").upsert(
+    { period: input.period, buyer: input.buyer, sales_cents: input.salesCents, cmv_percent: input.cmvPercent, ips, updated_at: new Date().toISOString() },
+    { onConflict: "period,buyer" },
+  );
+  if (error) throw new Error(error.message);
+  const existing = await listBuyerIps();
+  for (const item of existing.filter((item) => item.buyer === input.buyer && !ips.includes(item.ipAddress))) await removeBuyerIp(item.id);
+  for (const ip of ips) await saveBuyerIp({ ipAddress: ip, buyer: input.buyer });
+  return listBuyerGoalConfigs(input.period);
+}
+
+export async function listLineGoals(period: string): Promise<LineGoal[]> {
+  const { data, error } = await supabaseAdmin.from("line_goals").select("id,period,line_name,sales_cents").eq("period", period).order("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({ id: Number(row.id), period: row.period as string, lineName: row.line_name as string, salesCents: Number(row.sales_cents) }));
+}
+
+export async function replaceLineGoals(input: { period: string; goals: { id?: number; lineName: string; salesCents: number }[] }): Promise<LineGoal[]> {
+  const goals = input.goals.map((goal) => ({ ...goal, lineName: goal.lineName.trim() })).filter((goal) => goal.lineName);
+  const { error: deleteError } = await supabaseAdmin.from("line_goals").delete().eq("period", input.period);
+  if (deleteError) throw new Error(deleteError.message);
+  if (goals.length) {
+    const { error } = await supabaseAdmin.from("line_goals").insert(goals.map((goal) => ({ period: input.period, line_name: goal.lineName, sales_cents: goal.salesCents })));
+    if (error) throw new Error(error.message);
+  }
+  return listLineGoals(input.period);
+}
+
 export type BuyerBudget = { period: string; buyer: string; monthlyCents: number };
 
 const normalizeIp = (ip: string) => ip.trim().toLowerCase();
