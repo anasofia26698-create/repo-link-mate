@@ -111,8 +111,8 @@ export const saveBuyerGoalBudget = createServerFn({ method: "POST" })
 const goalConfigSchema = z.object({
   period: z.string().regex(/^\d{4}-\d{2}$/),
   buyer: z.string().trim().min(1).max(60),
-  salesCents: z.number().int().positive(),
-  cmvPercent: z.number().positive().max(100),
+  salesCents: z.number().int().nonnegative(),
+  cmvPercent: z.number().nonnegative().max(100),
   ips: z.array(z.string().trim().min(3).max(64)).max(50),
 });
 
@@ -138,7 +138,7 @@ export const getLineGoals = createServerFn({ method: "GET" })
   });
 
 export const saveLineGoals = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), goals: z.array(z.object({ id: z.number().int().optional(), lineName: z.string().trim().min(1).max(100), salesCents: z.number().int().positive() })).max(100) }).parse(data))
+  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), goals: z.array(z.object({ id: z.number().int().optional(), lineName: z.string().trim().min(1).max(100), salesCents: z.number().int().nonnegative() })).max(100) }).parse(data))
   .handler(async ({ data }) => {
     const { replaceLineGoals } = await import("./buyer.server");
     return replaceLineGoals(data);
