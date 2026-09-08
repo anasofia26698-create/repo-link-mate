@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { AlertTriangle, BarChart3, CalendarDays, Calculator, LockKeyhole, Save, Users } from "lucide-react";
+import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-react";
 import {
   calculateConsumption,
   calculatePurchaseBudget,
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { getBuyerMonthlyOverview, saveBuyerGoalBudget } from "@/lib/buyer.functions";
-import { money, parseBRL } from "./format";
+import { money } from "./format";
 
 export const SECTORS = [
   "Ético",
@@ -111,32 +111,6 @@ const monthLabel = (period: string) => {
 };
 const numericValue = (value: string) => Number(value.replace(/\./g, "").replace(",", ".")) || 0;
 const formatInput = (value: number) => value.toFixed(2).replace(".", ",");
-const moneyFromCents = (cents: number) => money(cents / 100);
-
-type BuyerProfile = { name: string; ips: string; active: boolean };
-type MonthlyBuyerConfig = { sales: string; cmv: string; coverage: string; salesPurchases: string };
-
-const BUYER_PROFILES_KEY = "signal-cash-buyer-profiles-v1";
-const BUYER_MONTHLY_CONFIG_KEY = "signal-cash-buyer-monthly-config-v1";
-const BUYER_PARAMETERS_KEY = "signal-cash-buyer-parameters-v1";
-const DEFAULT_PROFILES: Record<string, BuyerProfile> = Object.fromEntries(
-  BUYERS.map((name) => [name, { name, ips: "", active: true }]),
-);
-const DEFAULT_PARAMETERS = {
-  allocationPercent: "60",
-  criticalDays: CRITICAL_DAYS.join(", "),
-  criticalFactor: "85",
-  compensation: false,
-};
-
-const emptyMonthlyConfig = (): MonthlyBuyerConfig => ({ sales: "", cmv: "60", coverage: "", salesPurchases: "" });
-const monthLabel = (period: string) => {
-  const [year, month] = period.split("-");
-  return year && month ? `${month}/${year}` : period;
-};
-const numericValue = (value: string) => Number(value.replace(/\./g, "").replace(",", ".")) || 0;
-const formatInput = (value: number) => value.toFixed(2).replace(".", ",");
-const moneyFromCents = (cents: number) => money(cents / 100);
 
 export function GoalsTab() {
   return (
@@ -170,6 +144,7 @@ function BuyerGoalsForm() {
   const [profiles, setProfiles] = useState<Record<string, BuyerProfile>>(() => read(BUYER_PROFILES_KEY, DEFAULT_PROFILES));
   const [monthly, setMonthly] = useState<Record<string, MonthlyBuyerConfig>>(() => read(BUYER_MONTHLY_CONFIG_KEY, {}));
   const [parameters, setParameters] = useState(() => read(BUYER_PARAMETERS_KEY, DEFAULT_PARAMETERS));
+  const [lineGoals, setLineGoals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
   const [saving, setSaving] = useState(false);
   const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
   const budgets = overview.data?.budgets ?? [];
@@ -204,6 +179,7 @@ function BuyerGoalsForm() {
       localStorage.setItem(BUYER_PROFILES_KEY, JSON.stringify(profiles));
       localStorage.setItem(BUYER_MONTHLY_CONFIG_KEY, JSON.stringify(monthly));
       localStorage.setItem(BUYER_PARAMETERS_KEY, JSON.stringify(parameters));
+      localStorage.setItem(GOALS_KEY, JSON.stringify(lineGoals));
       for (const buyer of BUYERS) {
         const monthlyConfig = currentMonthly[buyer];
         const monthlyCents = Math.round(numericValue(monthlyConfig.sales) * (numericValue(parameters.allocationPercent) / 100) * 100);
@@ -221,35 +197,33 @@ function BuyerGoalsForm() {
   const allocationPercent = numericValue(parameters.allocationPercent) / 100;
   return (
     <>
-      <section className="card goals-card">
-        <div className="card-heading">
-          <div><h2><Users size={20} /> 1. Cadastro dos compradores</h2><p>Configure uma vez. Cada IP deve pertencer a um único comprador.</p></div>
-        </div>
-        <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Nome do comprador</th><th>IPs vinculados</th><th>Status</th></tr></thead><tbody>
-          {BUYERS.map((buyer) => { const profile = profiles[buyer] ?? DEFAULT_PROFILES[buyer]; return <tr key={buyer}>
-            <td><strong>{buyer}</strong></td>
-            <td><input value={profile.ips} placeholder="Ex.: 192.168.0.10, 192.168.0.11" onChange={(event) => updateProfile(buyer, "ips", event.target.value)} /></td>
-            <td><label><input type="checkbox" checked={profile.active} onChange={(event) => updateProfile(buyer, "active", event.target.checked)} /> Ativo</label></td>
-          </tr>; })}
-        </tbody></table></div>
-      </section>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1.25rem", alignItems: "start" }}>
+        <section className="card goals-card">
+          <div className="card-heading">
+            <div><h2>Metas por linha</h2><p>Venda prevista por linha de produto.</p></div>
+          </div>
+          <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Linha de produto</th><th>Período</th><th>Venda prevista</th></tr></thead><tbody>
+            {lineGoals.map((goal, index) => <tr key={goal.sector}><td><strong>{goal.sector}</strong></td><td>{goal.period}</td><td><input inputMode="decimal" value={goal.sales || ""} placeholder="0,00" onChange={(event) => setLineGoals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sales: numericValue(event.target.value) } : item))} /></td></tr>)}
+          </tbody></table></div>
+        </section>
 
-      <section className="card goals-card">
-        <div className="card-heading">
-          <div><h2><CalendarDays size={20} /> 2. Configuração mensal</h2><p>Informe a venda do mês; os demais valores são informativos e a dotação é calculada automaticamente.</p></div>
-          <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
-        </div>
-        <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês (R$)</th><th>% CMV alvo</th><th>Cobertura (dias)</th><th>Venda × Compras</th><th>Dotação calculada</th></tr></thead><tbody>
-          {BUYERS.map((buyer) => { const config = currentMonthly[buyer]; const allocation = numericValue(config.sales) * allocationPercent; return <tr key={buyer}>
-            <td><strong>{buyer}</strong></td>
-            <td><input inputMode="decimal" value={config.sales} placeholder="0,00" onChange={(event) => updateMonthly(buyer, "sales", event.target.value)} /></td>
-            <td><input inputMode="decimal" value={config.cmv} placeholder="60" onChange={(event) => updateMonthly(buyer, "cmv", event.target.value)} /></td>
-            <td><input inputMode="decimal" value={config.coverage} placeholder="—" onChange={(event) => updateMonthly(buyer, "coverage", event.target.value)} /></td>
-            <td><input inputMode="decimal" value={config.salesPurchases} placeholder="—" onChange={(event) => updateMonthly(buyer, "salesPurchases", event.target.value)} /></td>
-            <td><strong>{money(allocation)}</strong><small> venda × {parameters.allocationPercent}%</small></td>
-          </tr>; })}
-        </tbody></table></div>
-      </section>
+        <section className="card goals-card">
+          <div className="card-heading">
+            <div><h2>Meta por comprador</h2><p>Venda mensal, IPs vinculados e dotação calculada automaticamente.</p></div>
+            <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
+          </div>
+          <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês</th><th>% CMV alvo</th><th>IPs vinculados</th><th>Dotação mensal</th><th>Participação</th></tr></thead><tbody>
+            {BUYERS.map((buyer) => {
+              const config = currentMonthly[buyer];
+              const profile = profiles[buyer] ?? DEFAULT_PROFILES[buyer];
+              const allocation = numericValue(config.sales) * allocationPercent;
+              const totalSales = BUYERS.reduce((total, name) => total + numericValue(currentMonthly[name].sales), 0);
+              const participation = totalSales > 0 ? numericValue(config.sales) / totalSales * 100 : 0;
+              return <tr key={buyer}><td><strong>{buyer}</strong></td><td><input inputMode="decimal" value={config.sales} placeholder="0,00" onChange={(event) => updateMonthly(buyer, "sales", event.target.value)} /></td><td><input inputMode="decimal" value={config.cmv} placeholder="60" onChange={(event) => updateMonthly(buyer, "cmv", event.target.value)} /></td><td><input value={profile.ips} placeholder="IPs" onChange={(event) => updateProfile(buyer, "ips", event.target.value)} /></td><td><strong>{money(allocation)}</strong></td><td><strong>{participation.toFixed(1).replace(".", ",")} %</strong></td></tr>;
+            })}
+          </tbody></table></div>
+        </section>
+      </div>
 
       <section className="card goals-card">
         <div className="card-heading"><div><h2><Calculator size={20} /> 3. Parâmetros fixos</h2><p>Configurados uma vez e usados nos cálculos automáticos.</p></div></div>
