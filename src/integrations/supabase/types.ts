@@ -80,6 +80,39 @@ export type Database = {
         }
         Relationships: []
       }
+      buyer_goal_configs: {
+        Row: {
+          buyer: string
+          cmv_percent: number
+          created_at: string
+          id: number
+          ips: Json
+          period: string
+          sales_cents: number
+          updated_at: string
+        }
+        Insert: {
+          buyer: string
+          cmv_percent?: number
+          created_at?: string
+          id?: never
+          ips?: Json
+          period: string
+          sales_cents?: number
+          updated_at?: string
+        }
+        Update: {
+          buyer?: string
+          cmv_percent?: number
+          created_at?: string
+          id?: never
+          ips?: Json
+          period?: string
+          sales_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       buyer_ips: {
         Row: {
           buyer: string
@@ -263,6 +296,30 @@ export type Database = {
           ip_address?: string
           updated_at?: string
           user_name?: string
+        }
+        Relationships: []
+      }
+      line_goals: {
+        Row: {
+          created_at: string
+          id: number
+          line_name: string
+          period: string
+          sales_cents: number
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          line_name: string
+          period: string
+          sales_cents?: number
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          line_name?: string
+          period?: string
+          sales_cents?: number
         }
         Relationships: []
       }
