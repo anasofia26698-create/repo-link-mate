@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileSpreadsheet, Pencil, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
+import { Check, FileSpreadsheet, ShieldCheck, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteKnownIpUser,
@@ -201,134 +201,37 @@ export function AuditTab() {
       <div className="audit-columns">
         <section className="card audit-card">
           <div className="card-heading">
-            <div>
-              <h2>Eventos recentes</h2>
-              <p>Histórico imutável de acessos, importações, simulações e confirmações, com quem inseriu e o IP de origem.</p>
-            </div>
+            <div><h2>Eventos recentes</h2><p>Eventos registrados nos últimos 2 dias.</p></div>
             <ShieldCheck size={21} />
           </div>
-          {audit.isLoading ? (
-            <div className="empty">Carregando eventos...</div>
-          ) : (
-            <>
-              <div className="audit-list">
-                {audit.data?.map((event) => {
-                  const detail = formatAuditDetail(event.eventType, event.details);
-                  const displayName = event.knownName || event.userName;
-                  return (
-                    <div className="audit-item" key={event.id}>
-                      <div>
-                        <strong>{auditEventLabel(event.eventType)}</strong>
-                        <span>
-                          {displayName ? (
-                            <>
-                              {displayName}
-                              {event.userEmail ? ` · ${event.userEmail}` : ""}
-                            </>
-                          ) : event.ipAddress ? (
-                            <span className="audit-unidentified">Não identificado (IP: {event.ipAddress})</span>
-                          ) : (
-                            "Visitante não identificado"
-                          )}
-                        </span>
-                        {!displayName && event.ipAddress ? (
-                          identifyingIp === event.ipAddress ? (
-                            <div className="identify-form">
-                              <input
-                                value={identifyName}
-                                onChange={(inputEvent) => setIdentifyName(inputEvent.target.value)}
-                                placeholder="Nome do usuário (ex.: Mauricio)"
-                                autoFocus
-                              />
-                              <button className="btn btn-dark" onClick={identify} disabled={saveMutation.isPending}>
-                                Salvar
-                              </button>
-                              <button
-                                className="btn btn-light"
-                                onClick={() => {
-                                  setIdentifyingIp(null);
-                                  setIdentifyName("");
-                                }}
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              className="identify-btn"
-                              onClick={() => {
-                                setIdentifyingIp(event.ipAddress);
-                                setIdentifyName("");
-                              }}
-                            >
-                              <UserPlus size={13} /> Identificar usuário
-                            </button>
-                          )
-                        ) : null}
-                      </div>
-                      <div>
-                        <b>{new Date(event.createdAt).toLocaleString("pt-BR")}</b>
-                        <span>
-                          IP: {event.ipAddress || "Não disponível"} · {event.entryCount} lançamento(s)
-                        </span>
-                        {detail && <span className="audit-confirmation-details">{detail}</span>}
-                        <small>{event.userAgent || "Navegador não informado"}</small>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {!audit.data?.length && <div className="empty">Nenhum evento de auditoria registrado ainda.</div>}
-            </>
-          )}
+          {audit.isLoading ? <div className="empty">Carregando eventos...</div> : <>
+            <div className="audit-list">
+              {audit.data?.map((event) => {
+                const detail = formatAuditDetail(event.eventType, event.details);
+                const displayName = event.knownName || event.userName;
+                return <div className="audit-item" key={event.id}>
+                  <div><strong>{auditEventLabel(event.eventType)}</strong><span>{displayName ? <>{displayName}{event.userEmail ? ` · ${event.userEmail}` : ""}</> : event.ipAddress ? <span className="audit-unidentified">Não identificado (IP: {event.ipAddress})</span> : "Visitante não identificado"}</span>
+                    {!displayName && event.ipAddress ? identifyingIp === event.ipAddress ? <div className="identify-form"><input value={identifyName} onChange={(inputEvent) => setIdentifyName(inputEvent.target.value)} placeholder="Nome do usuário (ex.: Mauricio)" autoFocus /><button className="btn btn-dark" onClick={identify} disabled={saveMutation.isPending}>Salvar</button><button className="btn btn-light" onClick={() => { setIdentifyingIp(null); setIdentifyName(""); }}>Cancelar</button></div> : <button className="identify-btn" onClick={() => { setIdentifyingIp(event.ipAddress); setIdentifyName(""); }}><UserPlus size={13} /> Identificar usuário</button> : null}
+                  </div>
+                  <div><b>{new Date(event.createdAt).toLocaleString("pt-BR")}</b><span>IP: {event.ipAddress || "Não disponível"} · {event.entryCount} lançamento(s)</span>{detail && <span className="audit-confirmation-details">{detail}</span>}<small>{event.userAgent || "Navegador não informado"}</small></div>
+                </div>;
+              })}
+            </div>
+            {!audit.data?.length && <div className="empty">Nenhum evento dos últimos 2 dias.</div>}
+          </>}
         </section>
         <section className="card import-comparison-card">
-          <div className="card-heading">
-            <div>
-              <h2>Comparação de importações</h2>
-              <p>Compara a importação mais recente com a média das cinco anteriores e destaca o que mais aumentou desde a última importação.</p>
-            </div>
-            <FileSpreadsheet size={21} />
-          </div>
-          {comparison.isLoading ? (
-            <div className="empty">Carregando histórico de importações...</div>
-          ) : (
-            <div className="comparison-content comparison-content-stacked">
-              <div className="import-run-list">
-                {comparison.data?.runs.slice(0, 5).map((run) => (
-                  <div className="import-run" key={run.id}>
-                    <strong>{run.fileName || "Planilha sem nome"}</strong>
-                    <span>
-                      {new Date(run.createdAt).toLocaleString("pt-BR")} · {run.entryCount} lançamentos · {money(Number(run.totalDebitCents) / 100)}
-                    </span>
-                    <small>
-                      {dateBR(run.periodStart)} a {dateBR(run.periodEnd)}
-                    </small>
-                  </div>
-                ))}
-                {!(comparison.data?.runs.length ?? 0) && (
-                  <div className="empty">O histórico começará a ser comparado a partir das próximas importações.</div>
-                )}
-              </div>
-              <div className="increase-list">
-                <h3>Maiores aumentos versus média histórica</h3>
-                {comparison.data?.changes.map((change) => (
-                  <div className="increase-row" key={change.date}>
-                    <span>{dateBR(change.date)}</span>
-                    <b>{money(Number(change.increaseCents) / 100)}</b>
-                    <small>
-                      média: {money(Number(change.previousDebitCents) / 100)} · atual: {money(Number(change.currentDebitCents) / 100)}
-                    </small>
-                  </div>
-                ))}
-                {(comparison.data?.runs.length ?? 0) > 0 && !(comparison.data?.changes.length ?? 0) ? (
-                  <p className="muted">Nenhum aumento de débito por data foi identificado em relação à média histórica disponível.</p>
-                ) : null}
-              </div>
-            </div>
-          )}
+          <div className="card-heading"><div><h2>Comparação de importações</h2><p>Histórico de planilhas importadas nos últimos 2 dias.</p></div><FileSpreadsheet size={21} /></div>
+          {comparison.isLoading ? <div className="empty">Carregando histórico de importações...</div> : <div className="comparison-content comparison-content-stacked"><div className="import-run-list">
+            {comparison.data?.runs.map((run) => <div className="import-run" key={run.id}><strong>{run.fileName || "Planilha sem nome"}</strong><span>{new Date(run.createdAt).toLocaleString("pt-BR")} · {run.entryCount} lançamentos · {money(Number(run.totalDebitCents) / 100)}</span><small>{dateBR(run.periodStart)} a {dateBR(run.periodEnd)}</small></div>)}
+            {!(comparison.data?.runs.length ?? 0) && <div className="empty">Nenhuma importação dos últimos 2 dias.</div>}
+          </div></div>}
         </section>
       </div>
+      <section className="card audit-increases-card">
+        <div className="card-heading"><div><h2>Maiores aumentos versus média histórica</h2><p>Aumentos acima de R$ 5.000,00. Datas passadas são removidas automaticamente; datas futuras permanecem.</p></div><FileSpreadsheet size={21} /></div>
+        {comparison.isLoading ? <div className="empty">Carregando aumentos...</div> : (comparison.data?.increases.length ?? 0) ? <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Data</th><th>Valor a pagar — importação anterior</th><th>Valor a pagar — importação do dia</th><th>Aumento de entrada</th><th>Valor a pagar — importação seguinte</th><th>Aumento de entrada</th></tr></thead><tbody>{comparison.data?.increases.map((row) => <tr key={row.date}><td><strong>{dateBR(row.date)}</strong></td><td>{money(row.previousDebitCents / 100)}</td><td>{money(row.currentDebitCents / 100)}</td><td className="red-text"><strong>{row.currentIncreaseCents > 500000 ? money(row.currentIncreaseCents / 100) : "—"}</strong></td><td>{money(row.nextDebitCents / 100)}</td><td className="red-text"><strong>{row.nextIncreaseCents > 500000 ? money(row.nextIncreaseCents / 100) : "—"}</strong></td></tr>)}</tbody></table></div> : <div className="empty">Nenhum aumento acima de R$ 5.000,00 encontrado.</div>}
+      </section>
       <section className="card known-users-card">
         <div className="card-heading">
           <div>

@@ -186,10 +186,12 @@ export type AuditEventRow = {
 };
 
 export async function recentAuditEvents(limit: number): Promise<AuditEventRow[]> {
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
   const [eventsResult, knownIps] = await Promise.all([
     supabaseAdmin
       .from("audit_events")
       .select("id,event_type,user_name,user_email,ip_address,user_agent,entry_count,details,created_at")
+      .gte("created_at", since)
       .order("created_at", { ascending: false })
       .limit(limit),
     listKnownIpUsers(),
@@ -261,23 +263,29 @@ export type ImportRunRow = {
   createdAt: string;
 };
 
-export type ImportComparison = {
-  runs: ImportRunRow[];
-  changes: {
-    date: string;
-    currentDebitCents: number;
-    previousDebitCents: number;
-    increaseCents: number;
-  }[];
+export type ImportIncreaseRow = {
+  date: string;
+  previousDebitCents: number;
+  currentDebitCents: number;
+  currentIncreaseCents: number;
+  nextDebitCents: number;
+  nextIncreaseCents: number;
 };
 
-/** Compares the latest import against the average of the five previous ones. */
+export type ImportComparison = {
+  runs: ImportRunRow[];
+  increases: ImportIncreaseRow[];
+};
+
+/** Mantém somente as importações dos últimos dois dias e calcula aumentos futuros. */
 export async function importComparison(): Promise<ImportComparison> {
+  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("cash_flow_import_runs")
     .select("id,file_name,entry_count,period_start,period_end,total_debit_cents,created_at")
+    .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(6);
+    .limit(20);
   if (error) throw new Error(error.message);
 
   const runs: ImportRunRow[] = (data ?? []).map((row) => ({
@@ -289,58 +297,51 @@ export async function importComparison(): Promise<ImportComparison> {
     totalDebitCents: Number(row.total_debit_cents),
     createdAt: row.created_at as string,
   }));
+  if (!runs.length) return { runs, increases: [] };
 
-  if (runs.length < 2) return { runs, changes: [] };
-
-  const currentRun = runs[0];
-  if (!currentRun) return { runs, changes: [] };
-  const previousRuns = runs.slice(1, 6);
-  const runIds = [currentRun.id, ...previousRuns.map((run) => run.id)];
-
+  const runIds = runs.map((run) => run.id);
   const { data: rows, error: rowsError } = await supabaseAdmin
     .from("cash_flow_import_entries")
     .select("import_run_id,date,debit_cents")
     .in("import_run_id", runIds)
-    .limit(50000);
+    .limit(100000);
   if (rowsError) throw new Error(rowsError.message);
 
-  const currentByDate = new Map<string, number>();
-  const previousByDate = new Map<string, number[]>();
-  const perRunDate = new Map<string, number>();
-
+  const byRun = new Map<number, Map<string, number>>();
+  for (const run of runs) byRun.set(run.id, new Map());
   for (const row of rows ?? []) {
-    const runId = Number(row.import_run_id);
+    const values = byRun.get(Number(row.import_run_id));
+    if (!values) continue;
     const date = row.date as string;
-    const cents = Number(row.debit_cents);
-    if (runId === currentRun.id) {
-      currentByDate.set(date, (currentByDate.get(date) ?? 0) + cents);
-    } else {
-      const key = `${runId}|${date}`;
-      perRunDate.set(key, (perRunDate.get(key) ?? 0) + cents);
-    }
+    values.set(date, (values.get(date) ?? 0) + Number(row.debit_cents));
   }
 
-  for (const [key, cents] of perRunDate) {
-    const date = key.split("|")[1]!;
-    previousByDate.set(date, [...(previousByDate.get(date) ?? []), cents]);
-  }
-
-  const changes = Array.from(currentByDate.entries())
-    .map(([date, currentDebitCents]) => {
-      const history = previousByDate.get(date) ?? [];
-      const previousDebitCents = history.length
-        ? Math.round(history.reduce((sum, value) => sum + value, 0) / history.length)
-        : 0;
+  const today = new Date().toISOString().slice(0, 10);
+  const dates = new Set<string>();
+  for (const values of byRun.values()) for (const date of values.keys()) if (date >= today) dates.add(date);
+  const latest = runs[0];
+  const current = runs[1] ?? latest;
+  const previous = runs[2];
+  const nextValues = byRun.get(latest.id) ?? new Map();
+  const currentValues = byRun.get(current.id) ?? new Map();
+  const previousValues = previous ? byRun.get(previous.id) ?? new Map() : new Map();
+  const threshold = 5000 * 100;
+  const increases = Array.from(dates)
+    .map((date) => {
+      const previousDebitCents = previousValues.get(date) ?? 0;
+      const currentDebitCents = currentValues.get(date) ?? 0;
+      const nextDebitCents = nextValues.get(date) ?? 0;
       return {
         date,
-        currentDebitCents,
         previousDebitCents,
-        increaseCents: currentDebitCents - previousDebitCents,
+        currentDebitCents,
+        currentIncreaseCents: currentDebitCents - previousDebitCents,
+        nextDebitCents,
+        nextIncreaseCents: nextDebitCents - currentDebitCents,
       };
     })
-    .filter((change) => change.increaseCents > 0)
-    .sort((a, b) => b.increaseCents - a.increaseCents)
-    .slice(0, 12);
+    .filter((row) => row.currentIncreaseCents > threshold || row.nextIncreaseCents > threshold)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
-  return { runs, changes };
+  return { runs, increases };
 }
