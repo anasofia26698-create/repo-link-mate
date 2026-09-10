@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { getBuyerGoalConfigs, getLineGoals, saveBuyerGoalBudget, saveBuyerGoalConfig, saveLineGoals } from "@/lib/buyer.functions";
+import { getBuyerGoalConfigs, getBuyerMonthlyOverview, getLineGoals, saveBuyerGoalBudget, saveBuyerGoalConfig, saveLineGoals } from "@/lib/buyer.functions";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -335,9 +335,10 @@ export function PurchasesDashboardTab() {
 
 function BuyerMonthlyPanel() {
   const period = new Date().toISOString().slice(0, 7);
+  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
   const budgets = overview.data?.budgets ?? [];
   const payments = overview.data?.payments ?? [];
-  const rows = BUYERS.map((buyer) => {
+  const rows = BUYERS.map((buyer: (typeof BUYERS)[number]) => {
     const found = budgets.find((item) => item.period === period && item.buyer === buyer) ?? budgets.find((item) => item.buyer === buyer);
     const budget = (found?.monthlyCents ?? 0) / 100;
     const usedPeriod = found?.period ?? period;
