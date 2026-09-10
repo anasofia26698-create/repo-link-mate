@@ -56,7 +56,7 @@ export async function listLineGoals(period: string): Promise<LineGoal[]> {
   return (data ?? []).map((row) => ({ id: Number(row.id), period: row.period as string, lineName: row.line_name as string, salesCents: Number(row.sales_cents) }));
 }
 
-export async function replaceLineGoals(input: { period: string; goals: { id?: number; lineName: string; salesCents: number }[] }): Promise<LineGoal[]> {
+export async function replaceLineGoals(input: { period: string; goals: { id?: number | undefined; lineName: string; salesCents: number }[] }): Promise<LineGoal[]> {
   const goals = input.goals.map((goal) => ({ ...goal, lineName: goal.lineName.trim() })).filter((goal) => goal.lineName);
   const { error: deleteError } = await supabaseAdmin.from("line_goals").delete().eq("period", input.period);
   if (deleteError) throw new Error(deleteError.message);

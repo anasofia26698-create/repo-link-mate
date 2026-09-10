@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { getBuyerGoalConfigs, getLineGoals, saveBuyerGoalBudget, saveBuyerGoalConfig, saveLineGoals } from "@/lib/buyer.functions";
+import { getBuyerGoalConfigs, getBuyerMonthlyOverview, getLineGoals, saveBuyerGoalBudget, saveBuyerGoalConfig, saveLineGoals } from "@/lib/buyer.functions";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -90,7 +90,7 @@ function PasswordGate({ children }: { children: ReactNode }) {
 
 type BuyerProfile = { name: string; ips: string; active: boolean };
 type MonthlyBuyerConfig = { sales: string; cmv: string; coverage: string; salesPurchases: string };
-type LineGoalForm = { id?: number; lineName: string; sales: string };
+type LineGoalForm = { id?: number | undefined; lineName: string; sales: string };
 
 const emptyMonthlyConfig = (): MonthlyBuyerConfig => ({ sales: "", cmv: "60", coverage: "", salesPurchases: "" });
 const monthLabel = (period: string) => { const [year, month] = period.split("-"); return year && month ? `${month}/${year}` : period; };
@@ -166,7 +166,7 @@ function BuyerGoalsForm() {
     try {
       const normalizedMonthly: Record<string, MonthlyBuyerConfig> = {};
       for (const buyer of BUYERS) {
-        const config = currentMonthly[buyer];
+        const config = currentMonthly[buyer] ?? emptyMonthlyConfig();
         const rawSales = config.sales.replace(/^R\$\s*/, "");
         const validBRL = /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/;
         if (rawSales && !validBRL.test(rawSales)) throw new Error(`Use o formato brasileiro para a venda de ${buyer} (ex.: 1.400.000,00).`);
@@ -201,7 +201,7 @@ function BuyerGoalsForm() {
     }
   };
 
-  const totalSales = BUYERS.reduce((total, buyer) => total + parseBRL(currentMonthly[buyer].sales), 0);
+  const totalSales = BUYERS.reduce((total, buyer) => total + parseBRL((currentMonthly[buyer] ?? emptyMonthlyConfig()).sales), 0);
   return (
     <>
       <div className="card-heading" style={{ marginBottom: "1rem" }}>
@@ -218,7 +218,7 @@ function BuyerGoalsForm() {
         <section className="card goals-card">
           <div className="card-heading"><div><h2>Meta por comprador</h2><p>Venda mensal, CMV informativo e IPs vinculados.</p></div></div>
           <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês (R$)</th><th>% CMV alvo</th><th>IPs vinculados</th><th>Dotação mensal</th><th>Participação</th></tr></thead><tbody>
-            {BUYERS.map((buyer) => { const config = currentMonthly[buyer]; const sales = parseBRL(config.sales); const allocation = sales * 0.6; const participation = totalSales > 0 ? allocation / (totalSales * 0.6) * 100 : 0; return <tr key={buyer}><td><strong>{buyer}</strong></td><td><input inputMode="decimal" value={config.sales} placeholder="0,00" onChange={(event) => updateMoney(event.target.value, (value) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, sales: value } })))} onBlur={() => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, sales: config.sales ? money(parseBRL(config.sales)) : "" } }))} /></td><td><input inputMode="decimal" value={config.cmv} placeholder="60" onChange={(event) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, cmv: event.target.value.replace(/[^\d,]/g, "") } }))} />%</td><td><input value={profiles[buyer]?.ips ?? ""} placeholder="IPs" onChange={(event) => setProfiles((current) => ({ ...current, [buyer]: { ...(current[buyer] ?? { name: buyer, active: true }), ips: event.target.value } }))} /></td><td><strong>{money(allocation)}</strong></td><td><strong>{participation.toFixed(2).replace(".", ",")} %</strong></td></tr>; })}
+            {BUYERS.map((buyer) => { const config = currentMonthly[buyer] ?? emptyMonthlyConfig(); const sales = parseBRL(config.sales); const allocation = sales * 0.6; const participation = totalSales > 0 ? allocation / (totalSales * 0.6) * 100 : 0; return <tr key={buyer}><td><strong>{buyer}</strong></td><td><input inputMode="decimal" value={config.sales} placeholder="0,00" onChange={(event) => updateMoney(event.target.value, (value) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, sales: value } })))} onBlur={() => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, sales: config.sales ? money(parseBRL(config.sales)) : "" } }))} /></td><td><input inputMode="decimal" value={config.cmv} placeholder="60" onChange={(event) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, cmv: event.target.value.replace(/[^\d,]/g, "") } }))} />%</td><td><input value={profiles[buyer]?.ips ?? ""} placeholder="IPs" onChange={(event) => setProfiles((current) => ({ ...current, [buyer]: { ...(current[buyer] ?? { name: buyer, active: true }), ips: event.target.value } }))} /></td><td><strong>{money(allocation)}</strong></td><td><strong>{participation.toFixed(2).replace(".", ",")} %</strong></td></tr>; })}
           </tbody></table></div>
         </section>
       </div>
@@ -335,9 +335,10 @@ export function PurchasesDashboardTab() {
 
 function BuyerMonthlyPanel() {
   const period = new Date().toISOString().slice(0, 7);
+  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
   const budgets = overview.data?.budgets ?? [];
   const payments = overview.data?.payments ?? [];
-  const rows = BUYERS.map((buyer) => {
+  const rows = BUYERS.map((buyer: (typeof BUYERS)[number]) => {
     const found = budgets.find((item) => item.period === period && item.buyer === buyer) ?? budgets.find((item) => item.buyer === buyer);
     const budget = (found?.monthlyCents ?? 0) / 100;
     const usedPeriod = found?.period ?? period;
