@@ -320,6 +320,7 @@ export async function importComparison(): Promise<ImportComparison> {
   const dates = new Set<string>();
   for (const values of byRun.values()) for (const date of values.keys()) if (date >= today) dates.add(date);
   const latest = runs[0];
+  if (!latest) return { runs, increases: [] };
   const current = runs[1] ?? latest;
   const previous = runs[2];
   const nextValues = byRun.get(latest.id) ?? new Map();
