@@ -47,6 +47,10 @@ function formatAuditDetail(type: string, value: string | null) {
   }
 }
 
+function importDateLabel(createdAt: string | undefined) {
+  return createdAt ? new Date(createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—";
+}
+
 export function AuditTab() {
   const queryClient = useQueryClient();
   const [password, setPassword] = useState("");
@@ -230,7 +234,7 @@ export function AuditTab() {
       </div>
       <section className="card audit-increases-card">
         <div className="card-heading"><div><h2>Maiores aumentos versus média histórica</h2><p>Aumentos acima de R$ 5.000,00. Datas passadas são removidas automaticamente; datas futuras permanecem.</p></div><FileSpreadsheet size={21} /></div>
-        {comparison.isLoading ? <div className="empty">Carregando aumentos...</div> : (comparison.data?.increases.length ?? 0) ? <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Data</th><th>Valor a pagar — importação anterior</th><th>Valor a pagar — importação do dia</th><th>Aumento de entrada</th><th>Valor a pagar — importação seguinte</th><th>Aumento de entrada</th></tr></thead><tbody>{comparison.data?.increases.map((row) => <tr key={row.date}><td><strong>{dateBR(row.date)}</strong></td><td>{money(row.previousDebitCents / 100)}</td><td>{money(row.currentDebitCents / 100)}</td><td className="red-text"><strong>{row.currentIncreaseCents > 500000 ? money(row.currentIncreaseCents / 100) : "—"}</strong></td><td>{money(row.nextDebitCents / 100)}</td><td className="red-text"><strong>{row.nextIncreaseCents > 500000 ? money(row.nextIncreaseCents / 100) : "—"}</strong></td></tr>)}</tbody></table></div> : <div className="empty">Nenhum aumento acima de R$ 5.000,00 encontrado.</div>}
+        {comparison.isLoading ? <div className="empty">Carregando aumentos...</div> : (comparison.data?.increases.length ?? 0) ? <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Data</th><th>Valor a pagar — importação anterior ({importDateLabel(comparison.data?.runs[2]?.createdAt)})</th><th>Valor a pagar — importação do dia ({importDateLabel(comparison.data?.runs[1]?.createdAt)})</th><th>Aumento de entrada ({importDateLabel(comparison.data?.runs[2]?.createdAt)} → {importDateLabel(comparison.data?.runs[1]?.createdAt)})</th><th>Valor a pagar — importação seguinte ({importDateLabel(comparison.data?.runs[0]?.createdAt)})</th><th>Aumento de entrada ({importDateLabel(comparison.data?.runs[1]?.createdAt)} → {importDateLabel(comparison.data?.runs[0]?.createdAt)})</th></tr></thead><tbody>{comparison.data?.increases.map((row) => <tr key={row.date}><td><strong>{dateBR(row.date)}</strong></td><td>{money(row.previousDebitCents / 100)}</td><td>{money(row.currentDebitCents / 100)}</td><td className="red-text"><strong>{row.currentIncreaseCents > 500000 ? money(row.currentIncreaseCents / 100) : "—"}</strong></td><td>{money(row.nextDebitCents / 100)}</td><td className="red-text"><strong>{row.nextIncreaseCents > 500000 ? money(row.nextIncreaseCents / 100) : "—"}</strong></td></tr>)}</tbody></table></div> : <div className="empty">Nenhum aumento acima de R$ 5.000,00 encontrado.</div>}
       </section>
       <section className="card known-users-card">
         <div className="card-heading">
