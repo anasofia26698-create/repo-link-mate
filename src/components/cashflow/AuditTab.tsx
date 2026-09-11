@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileSpreadsheet, ShieldCheck, UserPlus, X } from "lucide-react";
+import { Check, FileSpreadsheet, Pencil, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteKnownIpUser,
