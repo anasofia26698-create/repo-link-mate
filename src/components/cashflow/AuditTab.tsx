@@ -223,8 +223,8 @@ export function AuditTab() {
         <section className="card import-comparison-card">
           <div className="card-heading"><div><h2>Comparação de importações</h2><p>Histórico de planilhas importadas nos últimos 2 dias.</p></div><FileSpreadsheet size={21} /></div>
           {comparison.isLoading ? <div className="empty">Carregando histórico de importações...</div> : <div className="comparison-content comparison-content-stacked"><div className="import-run-list">
-            {comparison.data?.runs.map((run) => <div className="import-run" key={run.id}><strong>{run.fileName || "Planilha sem nome"}</strong><span>{new Date(run.createdAt).toLocaleString("pt-BR")} · {run.entryCount} lançamentos · {money(Number(run.totalDebitCents) / 100)}</span><small>{dateBR(run.periodStart)} a {dateBR(run.periodEnd)}</small></div>)}
-            {!(comparison.data?.runs.length ?? 0) && <div className="empty">Nenhuma importação dos últimos 2 dias.</div>}
+            {comparison.data?.runs.filter((run) => Date.now() - new Date(run.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000).map((run) => <div className="import-run" key={run.id}><strong>{run.fileName || "Planilha sem nome"}</strong><span>{new Date(run.createdAt).toLocaleString("pt-BR")} · {run.entryCount} lançamentos · {money(Number(run.totalDebitCents) / 100)}</span><small>{dateBR(run.periodStart)} a {dateBR(run.periodEnd)}</small></div>)}
+            {!(comparison.data?.runs.some((run) => Date.now() - new Date(run.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000) ?? false) && <div className="empty">Nenhuma importação dos últimos 2 dias.</div>}
           </div></div>}
         </section>
       </div>

@@ -277,15 +277,13 @@ export type ImportComparison = {
   increases: ImportIncreaseRow[];
 };
 
-/** Mantém somente as importações dos últimos dois dias e calcula aumentos futuros. */
+/** Lê todo o histórico permanente e calcula os aumentos entre importações consecutivas. */
 export async function importComparison(): Promise<ImportComparison> {
-  const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabaseAdmin
     .from("cash_flow_import_runs")
     .select("id,file_name,entry_count,period_start,period_end,total_debit_cents,created_at")
-    .gte("created_at", since)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(500);
   if (error) throw new Error(error.message);
 
   const runs: ImportRunRow[] = (data ?? []).map((row) => ({
