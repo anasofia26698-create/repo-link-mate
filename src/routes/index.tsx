@@ -7,7 +7,6 @@ import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
-  canPurchaseOnDate,
   getPurchaseLimitForDate,
   parsePaymentDates,
 } from "@/lib/simulationRules";
@@ -41,6 +40,16 @@ type Entry = { id: string; date: string; debit: number; source: "imported" | "ma
 type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
+const OCTOBER_TIGHTENING_FACTOR_KEY = "signal-cash-october-tightening-factor";
+const DEFAULT_OCTOBER_TIGHTENING_FACTOR = 0.1184;
+
+function getTightenedFlowLimit(date: string, debit: number, factor: number) {
+  const target = getPurchaseLimitForDate(date);
+  if (!date.startsWith("2026-10") || target.isCritical || debit > target.limit) return target;
+  const currentFree = target.limit - debit;
+  const newFree = currentFree <= 10000 ? 0 : currentFree * factor;
+  return { ...target, limit: debit + newFree };
+}
 
 const CRITICAL_DAYS_INFO = [
   { day: 5, label: "Folha de pagamento" },
@@ -71,6 +80,7 @@ function HomePage() {
   const [actorName, setActorName] = useState("");
   const [importSummary, setImportSummary] = useState<{ count: number; start: string; end: string; total: number } | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [octoberTighteningFactor, setOctoberTighteningFactor] = useState(DEFAULT_OCTOBER_TIGHTENING_FACTOR);
 
   const sharedFlow = useQuery({
     queryKey: ["cash-flow-entries"],
@@ -93,6 +103,12 @@ function HomePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const saved = Number(window.localStorage.getItem(OCTOBER_TIGHTENING_FACTOR_KEY));
+    if (Number.isFinite(saved) && saved >= 0 && saved <= 1) setOctoberTighteningFactor(saved);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     if (sessionStorage.getItem(AUDIT_ACCESS_SESSION_KEY)) return;
     sessionStorage.setItem(AUDIT_ACCESS_SESSION_KEY, "1");
     recordAccess().catch(() => sessionStorage.removeItem(AUDIT_ACCESS_SESSION_KEY));
@@ -106,7 +122,7 @@ function HomePage() {
     return Array.from(groups.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, debit]) => {
-        const target = getPurchaseLimitForDate(date);
+        const target = getTightenedFlowLimit(date, debit, octoberTighteningFactor);
         return {
           date,
           debit,
@@ -117,7 +133,7 @@ function HomePage() {
           isCritical: target.isCritical,
         };
       });
-  }, [activeEntries]);
+  }, [activeEntries, octoberTighteningFactor]);
 
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
@@ -135,11 +151,11 @@ function HomePage() {
     const installment = parsed.length ? purchase / parsed.length : 0;
     return parsed.map(({ term, date }) => {
       const existing = grouped.find((row) => row.date === date)?.debit || 0;
-      const target = getPurchaseLimitForDate(date);
-      const canBuy = canPurchaseOnDate(date, existing, installment);
+      const target = getTightenedFlowLimit(date, existing, octoberTighteningFactor);
+      const canBuy = existing + installment <= target.limit;
       return { term, date, existing, installment, limit: target.limit, weekday: target.weekday, isCritical: target.isCritical, canBuy };
     });
-  }, [simulationMode, paymentDates, terms, purchase, today, grouped]);
+  }, [simulationMode, paymentDates, terms, purchase, today, grouped, octoberTighteningFactor]);
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
@@ -325,6 +341,27 @@ function HomePage() {
                 <p className="subheading">Simule compras futuras com os débitos importados.</p>
               </div>
             </div>
+            <section className="card flow-settings-card">
+              <div className="card-heading"><div><h2>Ajustes de outubro</h2><p>Reduz a folga somente nos dias de outubro que ainda estão abaixo da meta original.</p></div></div>
+              <label>
+                Fator de aperto
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.0001"
+                  value={octoberTighteningFactor}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    if (!Number.isFinite(value)) return;
+                    const next = Math.min(1, Math.max(0, value));
+                    setOctoberTighteningFactor(next);
+                    window.localStorage.setItem(OCTOBER_TIGHTENING_FACTOR_KEY, String(next));
+                  }}
+                />
+                <small className="field-hint">Padrão: 0,1184. Dias com folga de até R$ 10.000,00 ficam no limite do débito.</small>
+              </label>
+            </section>
             <div className={simulated ? "sim-layout has-simulation" : "sim-layout"}>
               <aside className="card simulator simulator-large">
                 <div className="card-heading">
@@ -472,8 +509,8 @@ function HomePage() {
                 <div className="critical-list">
                   {CRITICAL_DAYS_INFO.map((item) => {
                     const date = nextCriticalDate(item.day, today);
-                    const target = getPurchaseLimitForDate(date);
                     const flow = grouped.find((row) => row.date === date);
+                    const target = getTightenedFlowLimit(date, flow?.debit ?? 0, octoberTighteningFactor);
                     const exceeded = flow ? flow.debit > target.limit : false;
                     return (
                       <div className={"critical-item " + (exceeded ? "critical-risk" : "")} key={item.day}>
@@ -593,4 +630,3 @@ function HomePage() {
     </div>
   );
 }
-
