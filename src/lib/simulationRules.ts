@@ -3,13 +3,22 @@ export type PaymentDate = { date: string; raw: string };
 export const WEEKDAY_AVERAGE_SALES = [87000, 124000, 124000, 124000, 123000, 127000, 133000] as const;
 export const WEEKDAY_NAMES = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"] as const;
 export const CRITICAL_PAYMENT_DAYS = [5, 10, 15, 20, 25] as const;
-const PURCHASE_RATIO = 0.576;
+const DEFAULT_PURCHASE_RATIO = 0.576;
+const OCTOBER_NOVEMBER_PURCHASE_RATIO = 0.549;
+
+export function getPurchaseRatioForDate(date: string): number {
+  const parsed = new Date(`${date}T12:00:00`);
+  const month = parsed.getMonth();
+  return month === 9 || month === 10
+    ? OCTOBER_NOVEMBER_PURCHASE_RATIO
+    : DEFAULT_PURCHASE_RATIO;
+}
 
 export function getPurchaseLimitForDate(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   const weekday = parsed.getDay();
   const averageSales = WEEKDAY_AVERAGE_SALES[weekday] ?? 0;
-  const weekdayLimit = averageSales * PURCHASE_RATIO;
+  const weekdayLimit = averageSales * getPurchaseRatioForDate(date);
   const isCritical = CRITICAL_PAYMENT_DAYS.includes(parsed.getDate() as typeof CRITICAL_PAYMENT_DAYS[number]);
   return {
     weekday: WEEKDAY_NAMES[weekday] ?? "",
