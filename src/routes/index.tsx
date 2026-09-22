@@ -40,8 +40,7 @@ type Entry = { id: string; date: string; debit: number; source: "imported" | "ma
 type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
-const OCTOBER_TIGHTENING_FACTOR_KEY = "signal-cash-october-tightening-factor";
-const DEFAULT_OCTOBER_TIGHTENING_FACTOR = 0.1184;
+const OCTOBER_TIGHTENING_FACTOR = 0.1184;
 
 function getTightenedFlowLimit(date: string, debit: number, factor: number) {
   const target = getPurchaseLimitForDate(date);
@@ -80,7 +79,7 @@ function HomePage() {
   const [actorName, setActorName] = useState("");
   const [importSummary, setImportSummary] = useState<{ count: number; start: string; end: string; total: number } | null>(null);
   const [mobileMenu, setMobileMenu] = useState(false);
-  const [octoberTighteningFactor, setOctoberTighteningFactor] = useState(DEFAULT_OCTOBER_TIGHTENING_FACTOR);
+  const octoberTighteningFactor = OCTOBER_TIGHTENING_FACTOR;
 
   const sharedFlow = useQuery({
     queryKey: ["cash-flow-entries"],
@@ -101,11 +100,6 @@ function HomePage() {
     if (sharedFlow.data) setEntries(sharedFlow.data.map(toEntry));
   }, [sharedFlow.data]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = Number(window.localStorage.getItem(OCTOBER_TIGHTENING_FACTOR_KEY));
-    if (Number.isFinite(saved) && saved >= 0 && saved <= 1) setOctoberTighteningFactor(saved);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -341,27 +335,6 @@ function HomePage() {
                 <p className="subheading">Simule compras futuras com os débitos importados.</p>
               </div>
             </div>
-            <section className="card flow-settings-card">
-              <div className="card-heading"><div><h2>Ajustes de outubro</h2><p>Reduz a folga somente nos dias de outubro que ainda estão abaixo da meta original.</p></div></div>
-              <label>
-                Fator de aperto
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.0001"
-                  value={octoberTighteningFactor}
-                  onChange={(event) => {
-                    const value = Number(event.target.value);
-                    if (!Number.isFinite(value)) return;
-                    const next = Math.min(1, Math.max(0, value));
-                    setOctoberTighteningFactor(next);
-                    window.localStorage.setItem(OCTOBER_TIGHTENING_FACTOR_KEY, String(next));
-                  }}
-                />
-                <small className="field-hint">Padrão: 0,1184. Dias com folga de até R$ 10.000,00 ficam no limite do débito.</small>
-              </label>
-            </section>
             <div className={simulated ? "sim-layout has-simulation" : "sim-layout"}>
               <aside className="card simulator simulator-large">
                 <div className="card-heading">
