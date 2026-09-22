@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
-import { dailyGoal } from "./buyerRules";
+import { dailyGoal, isCriticalDate } from "./buyerRules";
 
 export type SharedEntry = {
   id: number;
@@ -404,7 +404,10 @@ export async function importComparison(): Promise<ImportComparison> {
     const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = `${month}-${String(day).padStart(2, "0")}`;
-      const goalCents = Math.round(dailyGoal(budgetCents / 100, date).goal * 100);
+      const calculatedGoal = dailyGoal(budgetCents / 100, date);
+      const goalCents = isCriticalDate(date)
+        ? Math.min(50000 * 100, Math.round(calculatedGoal.normalGoal * 100))
+        : Math.round(calculatedGoal.goal * 100);
       const debitCents = nextValues.get(date) ?? 0;
       if (debitCents < goalCents) availableCents += goalCents - debitCents;
       if (debitCents > goalCents) exceededCents += debitCents - goalCents;
