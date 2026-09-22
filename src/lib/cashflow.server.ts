@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
+import { dailyGoal } from "./buyerRules";
 
 export type SharedEntry = {
   id: number;
@@ -277,6 +278,7 @@ export type ImportMonthlyBudget = {
   budgetCents: number;
   totalDebitCents: number;
   availableCents: number;
+  exceededCents: number;
   blocked: boolean;
 };
 
@@ -311,13 +313,22 @@ export async function importComparison(): Promise<ImportComparison> {
     totalDebitCents: Number(row.total_debit_cents),
     createdAt: row.created_at as string,
   }));
+  const budgetMonths = ["2026-10", "2026-11", "2026-12"];
+  const { data: budgetRows, error: budgetError } = await supabaseAdmin
+    .from("buyer_budgets")
+    .select("period,monthly_cents")
+    .in("period", budgetMonths);
+  if (budgetError) throw new Error(budgetError.message);
+  const budgetsByMonth = new Map<string, number>();
+  for (const row of budgetRows ?? []) budgetsByMonth.set(row.period as string, (budgetsByMonth.get(row.period as string) ?? 0) + Number(row.monthly_cents));
+  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: budgetsByMonth.get(month) ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, blocked: (budgetsByMonth.get(month) ?? 0) <= 0 }));
   if (!runs.length) {
     return {
       runs,
       increases: [],
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
       septemberToDecemberTotalCents: 0,
-      monthlyBudgets: [],
+      monthlyBudgets: emptyMonthlyBudgets,
     };
   }
 
@@ -348,6 +359,7 @@ export async function importComparison(): Promise<ImportComparison> {
       increases: [],
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
       septemberToDecemberTotalCents: 0,
+      monthlyBudgets: emptyMonthlyBudgets,
     };
   }
   const current = runs[1] ?? latest;
@@ -355,14 +367,6 @@ export async function importComparison(): Promise<ImportComparison> {
   const nextValues = byRun.get(latest.id) ?? new Map();
   const currentValues = byRun.get(current.id) ?? new Map();
   const previousValues = previous ? byRun.get(previous.id) ?? new Map() : new Map();
-  const budgetMonths = ["2026-10", "2026-11", "2026-12"];
-  const { data: budgetRows, error: budgetError } = await supabaseAdmin
-    .from("buyer_budgets")
-    .select("period,monthly_cents")
-    .in("period", budgetMonths);
-  if (budgetError) throw new Error(budgetError.message);
-  const budgetsByMonth = new Map<string, number>();
-  for (const row of budgetRows ?? []) budgetsByMonth.set(row.period as string, (budgetsByMonth.get(row.period as string) ?? 0) + Number(row.monthly_cents));
   const monthlyTotals = AUDIT_MONTHS.map((month) => ({
     month,
     totalDebitCents: Array.from(nextValues.entries()).reduce(
@@ -394,7 +398,18 @@ export async function importComparison(): Promise<ImportComparison> {
   const monthlyBudgets = budgetMonths.map((month) => {
     const budgetCents = budgetsByMonth.get(month) ?? 0;
     const totalDebitCents = monthlyTotals.find((item) => item.month === month)?.totalDebitCents ?? 0;
-    return { month, budgetCents, totalDebitCents, availableCents: budgetCents - totalDebitCents, blocked: budgetCents <= 0 };
+    let availableCents = 0;
+    let exceededCents = 0;
+    const [year, monthNumber] = month.split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = `${month}-${String(day).padStart(2, "0")}`;
+      const goalCents = Math.round(dailyGoal(budgetCents / 100, date).goal * 100);
+      const debitCents = nextValues.get(date) ?? 0;
+      if (debitCents < goalCents) availableCents += goalCents - debitCents;
+      if (debitCents > goalCents) exceededCents += debitCents - goalCents;
+    }
+    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, blocked: budgetCents <= 0 };
   });
   return { runs, increases, monthlyTotals, septemberToDecemberTotalCents, monthlyBudgets };
 }
