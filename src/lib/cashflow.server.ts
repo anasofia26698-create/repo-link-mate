@@ -279,6 +279,7 @@ export type ImportMonthlyBudget = {
   totalDebitCents: number;
   availableCents: number;
   exceededCents: number;
+  hasImport: boolean;
   blocked: boolean;
 };
 
@@ -314,14 +315,12 @@ export async function importComparison(): Promise<ImportComparison> {
     createdAt: row.created_at as string,
   }));
   const budgetMonths = ["2026-10", "2026-11", "2026-12"];
-  const { data: budgetRows, error: budgetError } = await supabaseAdmin
-    .from("buyer_budgets")
-    .select("period,monthly_cents")
-    .in("period", budgetMonths);
-  if (budgetError) throw new Error(budgetError.message);
-  const budgetsByMonth = new Map<string, number>();
-  for (const row of budgetRows ?? []) budgetsByMonth.set(row.period as string, (budgetsByMonth.get(row.period as string) ?? 0) + Number(row.monthly_cents));
-  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: budgetsByMonth.get(month) ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, blocked: (budgetsByMonth.get(month) ?? 0) <= 0 }));
+  const AUDIT_PURCHASE_BUDGETS: Record<string, number> = {
+    "2026-10": 198260300,
+    "2026-11": 189146900,
+    "2026-12": 197436800,
+  };
+  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: false }));
   if (!runs.length) {
     return {
       runs,
@@ -396,7 +395,7 @@ export async function importComparison(): Promise<ImportComparison> {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const monthlyBudgets = budgetMonths.map((month) => {
-    const budgetCents = budgetsByMonth.get(month) ?? 0;
+    const budgetCents = AUDIT_PURCHASE_BUDGETS[month] ?? 0;
     const totalDebitCents = monthlyTotals.find((item) => item.month === month)?.totalDebitCents ?? 0;
     let availableCents = 0;
     let exceededCents = 0;
@@ -412,7 +411,8 @@ export async function importComparison(): Promise<ImportComparison> {
       if (debitCents < goalCents) availableCents += goalCents - debitCents;
       if (debitCents > goalCents) exceededCents += debitCents - goalCents;
     }
-    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, blocked: budgetCents <= 0 };
+    const hasImport = Array.from(nextValues.keys()).some((date) => date.startsWith(month));
+    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: false };
   });
   return { runs, increases, monthlyTotals, septemberToDecemberTotalCents, monthlyBudgets };
 }
