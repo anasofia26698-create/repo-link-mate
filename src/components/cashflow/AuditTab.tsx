@@ -254,6 +254,10 @@ export function AuditTab() {
               </div>
             )}
           </section>
+          <section className="card free-purchase-card">
+            <div className="card-heading"><div><h2>Livre para compra por mês</h2><p>Orçamento de compra menos o total a pagar do mês.</p></div><CalendarDays size={21} /></div>
+            {comparison.isLoading ? <div className="empty">Calculando disponibilidade mensal...</div> : <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Mês</th><th>Orçamento de compra</th><th>Total a pagar</th><th>Livre para compra</th></tr></thead><tbody>{comparison.data?.monthlyBudgets.map((item) => { const negative = item.availableCents < 0 || item.blocked; return <tr key={item.month}><td><strong>{monthLabel(item.month)}</strong></td><td>{money(item.budgetCents / 100)}</td><td>{money(item.totalDebitCents / 100)}</td><td style={{ color: negative ? "#b42318" : "#147d3f", fontWeight: 700 }}>{item.blocked ? "Bloqueado" : money(item.availableCents / 100)}</td></tr>; })}</tbody></table></div>}
+          </section>
         </div>
       </div>
       <section className="card audit-increases-card">

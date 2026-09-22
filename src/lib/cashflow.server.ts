@@ -272,6 +272,14 @@ export type ImportIncreaseRow = {
   nextIncreaseCents: number;
 };
 
+export type ImportMonthlyBudget = {
+  month: string;
+  budgetCents: number;
+  totalDebitCents: number;
+  availableCents: number;
+  blocked: boolean;
+};
+
 export type ImportComparison = {
   runs: ImportRunRow[];
   increases: ImportIncreaseRow[];
@@ -280,6 +288,7 @@ export type ImportComparison = {
     totalDebitCents: number;
   }[];
   septemberToDecemberTotalCents: number;
+  monthlyBudgets: ImportMonthlyBudget[];
 };
 
 const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
@@ -308,6 +317,7 @@ export async function importComparison(): Promise<ImportComparison> {
       increases: [],
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
       septemberToDecemberTotalCents: 0,
+      monthlyBudgets: [],
     };
   }
 
@@ -345,6 +355,14 @@ export async function importComparison(): Promise<ImportComparison> {
   const nextValues = byRun.get(latest.id) ?? new Map();
   const currentValues = byRun.get(current.id) ?? new Map();
   const previousValues = previous ? byRun.get(previous.id) ?? new Map() : new Map();
+  const budgetMonths = ["2026-10", "2026-11", "2026-12"];
+  const { data: budgetRows, error: budgetError } = await supabaseAdmin
+    .from("buyer_budgets")
+    .select("period,monthly_cents")
+    .in("period", budgetMonths);
+  if (budgetError) throw new Error(budgetError.message);
+  const budgetsByMonth = new Map<string, number>();
+  for (const row of budgetRows ?? []) budgetsByMonth.set(row.period as string, (budgetsByMonth.get(row.period as string) ?? 0) + Number(row.monthly_cents));
   const monthlyTotals = AUDIT_MONTHS.map((month) => ({
     month,
     totalDebitCents: Array.from(nextValues.entries()).reduce(
@@ -373,5 +391,10 @@ export async function importComparison(): Promise<ImportComparison> {
     .filter((row) => row.currentIncreaseCents > threshold || row.nextIncreaseCents > threshold)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  return { runs, increases, monthlyTotals, septemberToDecemberTotalCents };
+  const monthlyBudgets = budgetMonths.map((month) => {
+    const budgetCents = budgetsByMonth.get(month) ?? 0;
+    const totalDebitCents = monthlyTotals.find((item) => item.month === month)?.totalDebitCents ?? 0;
+    return { month, budgetCents, totalDebitCents, availableCents: budgetCents - totalDebitCents, blocked: budgetCents <= 0 };
+  });
+  return { runs, increases, monthlyTotals, septemberToDecemberTotalCents, monthlyBudgets };
 }
