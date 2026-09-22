@@ -149,7 +149,14 @@
 .flow-columns .critical-card { margin-bottom:0; }
 .audit-columns { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr); gap:16px; align-items:start; }
 .audit-columns .import-comparison-card { margin-top:0; }
+.audit-right-column { display:grid; gap:16px; min-width:0; }
 .comparison-content-stacked { grid-template-columns:1fr; }
+.monthly-totals-list { display:grid; padding:6px 20px 12px; }
+.monthly-total-row { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:13px 0; border-bottom:1px solid #edf0f2; }
+.monthly-total-row span { color:#4b5563; font-size:15px; }
+.monthly-total-row strong { color:#20262d; font-size:16px; text-align:right; }
+.monthly-total-grand { margin-top:6px; padding-top:17px; border-bottom:0; border-top:2px solid #dfe2e6; }
+.monthly-total-grand span,.monthly-total-grand strong { color:#17683f; font-weight:700; }
 .known-users-card { margin-top:16px; }
 .known-user-list { display:grid; padding:6px 20px 4px; }
 .known-user-row { display:grid; grid-template-columns:minmax(140px,.7fr) minmax(200px,1.3fr) auto; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid #edf0f2; }

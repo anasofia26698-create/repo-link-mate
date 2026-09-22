@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileSpreadsheet, Pencil, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
+import { CalendarDays, Check, FileSpreadsheet, Pencil, ShieldCheck, Trash2, UserPlus, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   deleteKnownIpUser,
@@ -49,6 +49,19 @@ function formatAuditDetail(type: string, value: string | null) {
 
 function importDateLabel(createdAt: string | undefined) {
   return createdAt ? new Date(createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "—";
+}
+
+function monthLabel(month: string) {
+  const [year, monthNumber] = month.split("-");
+  const monthName = ({
+    "09": "Setembro",
+    "10": "Outubro",
+    "11": "Novembro",
+    "12": "Dezembro",
+    "01": "Janeiro",
+    "02": "Fevereiro",
+  } as Record<string, string>)[monthNumber ?? ""] ?? month;
+  return `${monthName}/${year}`;
 }
 
 export function AuditTab() {
@@ -224,13 +237,24 @@ export function AuditTab() {
             {!audit.data?.length && <div className="empty">Nenhum evento dos últimos 2 dias.</div>}
           </>}
         </section>
-        <section className="card import-comparison-card">
-          <div className="card-heading"><div><h2>Comparação de importações</h2><p>Histórico de planilhas importadas nos últimos 2 dias.</p></div><FileSpreadsheet size={21} /></div>
-          {comparison.isLoading ? <div className="empty">Carregando histórico de importações...</div> : <div className="comparison-content comparison-content-stacked"><div className="import-run-list">
-            {comparison.data?.runs.filter((run) => Date.now() - new Date(run.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000).map((run) => <div className="import-run" key={run.id}><strong>{run.fileName || "Planilha sem nome"}</strong><span>{new Date(run.createdAt).toLocaleString("pt-BR")} · {run.entryCount} lançamentos · {money(Number(run.totalDebitCents) / 100)}</span><small>{dateBR(run.periodStart)} a {dateBR(run.periodEnd)}</small></div>)}
-            {!(comparison.data?.runs.some((run) => Date.now() - new Date(run.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000) ?? false) && <div className="empty">Nenhuma importação dos últimos 2 dias.</div>}
-          </div></div>}
-        </section>
+        <div className="audit-right-column">
+          <section className="card import-comparison-card">
+            <div className="card-heading"><div><h2>Comparação de importações</h2><p>Histórico de planilhas importadas nos últimos 2 dias.</p></div><FileSpreadsheet size={21} /></div>
+            {comparison.isLoading ? <div className="empty">Carregando histórico de importações...</div> : <div className="comparison-content comparison-content-stacked"><div className="import-run-list">
+              {comparison.data?.runs.filter((run) => Date.now() - new Date(run.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000).map((run) => <div className="import-run" key={run.id}><strong>{run.fileName || "Planilha sem nome"}</strong><span>{new Date(run.createdAt).toLocaleString("pt-BR")} · {run.entryCount} lançamentos · {money(Number(run.totalDebitCents) / 100)}</span><small>{dateBR(run.periodStart)} a {dateBR(run.periodEnd)}</small></div>)}
+              {!(comparison.data?.runs.some((run) => Date.now() - new Date(run.createdAt).getTime() <= 2 * 24 * 60 * 60 * 1000) ?? false) && <div className="empty">Nenhuma importação dos últimos 2 dias.</div>}
+            </div></div>}
+          </section>
+          <section className="card monthly-totals-card">
+            <div className="card-heading"><div><h2>Total a pagar por mês</h2><p>Valores por vencimento da planilha importada mais recente.</p></div><CalendarDays size={21} /></div>
+            {comparison.isLoading ? <div className="empty">Calculando totais mensais...</div> : (
+              <div className="monthly-totals-list">
+                {comparison.data?.monthlyTotals.map((item) => <div className="monthly-total-row" key={item.month}><span>{monthLabel(item.month)}</span><strong>{money(item.totalDebitCents / 100)}</strong></div>)}
+                <div className="monthly-total-row monthly-total-grand"><span>TOTAL (Set a Dez) 2026</span><strong>{money((comparison.data?.septemberToDecemberTotalCents ?? 0) / 100)}</strong></div>
+              </div>
+            )}
+          </section>
+        </div>
       </div>
       <section className="card audit-increases-card">
         <div className="card-heading"><div><h2>Maiores aumentos versus média histórica</h2><p>Aumentos acima de R$ 5.000,00. Datas passadas são removidas automaticamente; datas futuras permanecem.</p></div><FileSpreadsheet size={21} /></div>

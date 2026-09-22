@@ -275,7 +275,14 @@ export type ImportIncreaseRow = {
 export type ImportComparison = {
   runs: ImportRunRow[];
   increases: ImportIncreaseRow[];
+  monthlyTotals: {
+    month: string;
+    totalDebitCents: number;
+  }[];
+  septemberToDecemberTotalCents: number;
 };
+
+const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
 
 /** Lê todo o histórico permanente e calcula os aumentos entre importações consecutivas. */
 export async function importComparison(): Promise<ImportComparison> {
@@ -295,7 +302,14 @@ export async function importComparison(): Promise<ImportComparison> {
     totalDebitCents: Number(row.total_debit_cents),
     createdAt: row.created_at as string,
   }));
-  if (!runs.length) return { runs, increases: [] };
+  if (!runs.length) {
+    return {
+      runs,
+      increases: [],
+      monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
+      septemberToDecemberTotalCents: 0,
+    };
+  }
 
   const runIds = runs.map((run) => run.id);
   const { data: rows, error: rowsError } = await supabaseAdmin
@@ -318,12 +332,29 @@ export async function importComparison(): Promise<ImportComparison> {
   const dates = new Set<string>();
   for (const values of byRun.values()) for (const date of values.keys()) if (date >= today) dates.add(date);
   const latest = runs[0];
-  if (!latest) return { runs, increases: [] };
+  if (!latest) {
+    return {
+      runs,
+      increases: [],
+      monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
+      septemberToDecemberTotalCents: 0,
+    };
+  }
   const current = runs[1] ?? latest;
   const previous = runs[2];
   const nextValues = byRun.get(latest.id) ?? new Map();
   const currentValues = byRun.get(current.id) ?? new Map();
   const previousValues = previous ? byRun.get(previous.id) ?? new Map() : new Map();
+  const monthlyTotals = AUDIT_MONTHS.map((month) => ({
+    month,
+    totalDebitCents: Array.from(nextValues.entries()).reduce(
+      (total, [date, debitCents]) => total + (date.startsWith(month) ? debitCents : 0),
+      0,
+    ),
+  }));
+  const septemberToDecemberTotalCents = monthlyTotals
+    .filter(({ month }) => month >= "2026-09" && month <= "2026-12")
+    .reduce((total, item) => total + item.totalDebitCents, 0);
   const threshold = 5000 * 100;
   const increases = Array.from(dates)
     .map((date) => {
@@ -342,5 +373,5 @@ export async function importComparison(): Promise<ImportComparison> {
     .filter((row) => row.currentIncreaseCents > threshold || row.nextIncreaseCents > threshold)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  return { runs, increases };
+  return { runs, increases, monthlyTotals, septemberToDecemberTotalCents };
 }
