@@ -246,11 +246,11 @@ export function AuditTab() {
             </div></div>}
           </section>
           <section className="card monthly-totals-card">
-            <div className="card-heading"><div><h2>Total a pagar por mês</h2><p>Valores por vencimento da planilha importada mais recente.</p></div><CalendarDays size={21} /></div>
+            <div className="card-heading"><div><h2>Total a pagar por mês</h2><p>Pagamentos agrupados por mês de vencimento na base importada.</p></div><CalendarDays size={21} /></div>
             {comparison.isLoading ? <div className="empty">Calculando totais mensais...</div> : (
               <div className="monthly-totals-list">
                 {comparison.data?.monthlyTotals.map((item) => <div className="monthly-total-row" key={item.month}><span>{monthLabel(item.month)}</span><strong>{money(item.totalDebitCents / 100)}</strong></div>)}
-                <div className="monthly-total-row monthly-total-grand"><span>TOTAL (Set a Dez) 2026</span><strong>{money((comparison.data?.septemberToDecemberTotalCents ?? 0) / 100)}</strong></div>
+                <div className="monthly-total-row monthly-total-grand"><span>TOTAL GERAL (Out/2026 a Jan/2027)</span><strong>{money((comparison.data?.periodTotalCents ?? 0) / 100)}</strong></div>
               </div>
             )}
           </section>

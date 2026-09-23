@@ -308,11 +308,11 @@ export type ImportComparison = {
     month: string;
     totalDebitCents: number;
   }[];
-  septemberToDecemberTotalCents: number;
+  periodTotalCents: number;
   monthlyBudgets: ImportMonthlyBudget[];
 };
 
-const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
+const AUDIT_MONTHS = ["2026-10", "2026-11", "2026-12", "2027-01"];
 
 /** Lê todo o histórico permanente e calcula os aumentos entre importações consecutivas. */
 export async function importComparison(): Promise<ImportComparison> {
@@ -332,11 +332,12 @@ export async function importComparison(): Promise<ImportComparison> {
     totalDebitCents: Number(row.total_debit_cents),
     createdAt: row.created_at as string,
   }));
-  const budgetMonths = ["2026-10", "2026-11", "2026-12"];
+  const budgetMonths = AUDIT_MONTHS;
   const AUDIT_PURCHASE_BUDGETS: Record<string, number> = {
     "2026-10": 198260300,
     "2026-11": 189146900,
     "2026-12": 197436800,
+    "2027-01": 196558400,
   };
   const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: false }));
   if (!runs.length) {
@@ -344,7 +345,7 @@ export async function importComparison(): Promise<ImportComparison> {
       runs,
       increases: [],
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
-      septemberToDecemberTotalCents: 0,
+      periodTotalCents: 0,
       monthlyBudgets: emptyMonthlyBudgets,
     };
   }
@@ -375,7 +376,7 @@ export async function importComparison(): Promise<ImportComparison> {
       runs,
       increases: [],
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
-      septemberToDecemberTotalCents: 0,
+      periodTotalCents: 0,
       monthlyBudgets: emptyMonthlyBudgets,
     };
   }
@@ -402,9 +403,7 @@ export async function importComparison(): Promise<ImportComparison> {
       0,
     ),
   }));
-  const septemberToDecemberTotalCents = monthlyTotals
-    .filter(({ month }) => month >= "2026-09" && month <= "2026-12")
-    .reduce((total, item) => total + item.totalDebitCents, 0);
+  const periodTotalCents = monthlyTotals.reduce((total, item) => total + item.totalDebitCents, 0);
   const threshold = 5000 * 100;
   const increases = Array.from(dates)
     .map((date) => {
@@ -447,5 +446,5 @@ export async function importComparison(): Promise<ImportComparison> {
     const hasImport = Array.from(currentFlowValues.keys()).some((date) => date.startsWith(month));
     return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: false };
   });
-  return { runs, increases, monthlyTotals, septemberToDecemberTotalCents, monthlyBudgets };
+  return { runs, increases, monthlyTotals, periodTotalCents, monthlyBudgets };
 }
