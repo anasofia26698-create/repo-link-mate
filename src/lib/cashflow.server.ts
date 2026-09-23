@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
-import { dailyGoal, isCriticalDate } from "./buyerRules";
-
+import { isCriticalDate } from "./buyerRules";
+import { getPurchaseLimitForDate, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
   id: number;
   date: string;
@@ -91,21 +91,39 @@ export async function replaceImportedEntries(input: {
     details: input.importMeta ?? null,
   });
 
+  const { data: existingImported, error: existingError } = await supabaseAdmin
+    .from("cash_flow_entries")
+    .select("date,debit_cents")
+    .eq("source", "imported");
+  if (existingError) throw new Error(existingError.message);
+
+  const incomingDates = new Set(input.entries.map((entry) => entry.date));
+  const preservedEntries = (existingImported ?? [])
+    .filter((entry) => !incomingDates.has(entry.date as string))
+    .map((entry) => ({
+      date: entry.date as string,
+      debit_cents: Number(entry.debit_cents),
+      source: "imported" as const,
+      audit_event_id: auditEventId,
+    }));
+  const entriesToInsert = [
+    ...preservedEntries,
+    ...input.entries.map((entry) => ({
+      date: entry.date,
+      debit_cents: entry.debitCents,
+      source: "imported" as const,
+      audit_event_id: auditEventId,
+    })),
+  ];
+
   const { error: deleteError } = await supabaseAdmin
     .from("cash_flow_entries")
     .delete()
     .eq("source", "imported");
   if (deleteError) throw new Error(deleteError.message);
 
-  if (input.entries.length) {
-    const { error } = await supabaseAdmin.from("cash_flow_entries").insert(
-      input.entries.map((entry) => ({
-        date: entry.date,
-        debit_cents: entry.debitCents,
-        source: "imported",
-        audit_event_id: auditEventId,
-      })),
-    );
+  if (entriesToInsert.length) {
+    const { error } = await supabaseAdmin.from("cash_flow_entries").insert(entriesToInsert);
     if (error) throw new Error(error.message);
   }
 
@@ -366,9 +384,20 @@ export async function importComparison(): Promise<ImportComparison> {
   const nextValues = byRun.get(latest.id) ?? new Map();
   const currentValues = byRun.get(current.id) ?? new Map();
   const previousValues = previous ? byRun.get(previous.id) ?? new Map() : new Map();
+  const { data: currentFlowRows, error: currentFlowError } = await supabaseAdmin
+    .from("cash_flow_entries")
+    .select("date,debit_cents")
+    .eq("source", "imported")
+    .limit(20000);
+  if (currentFlowError) throw new Error(currentFlowError.message);
+  const currentFlowValues = new Map<string, number>();
+  for (const row of currentFlowRows ?? []) {
+    const date = row.date as string;
+    currentFlowValues.set(date, (currentFlowValues.get(date) ?? 0) + Number(row.debit_cents));
+  }
   const monthlyTotals = AUDIT_MONTHS.map((month) => ({
     month,
-    totalDebitCents: Array.from(nextValues.entries()).reduce(
+    totalDebitCents: Array.from(currentFlowValues.entries()).reduce(
       (total, [date, debitCents]) => total + (date.startsWith(month) ? debitCents : 0),
       0,
     ),
@@ -403,15 +432,17 @@ export async function importComparison(): Promise<ImportComparison> {
     const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = `${month}-${String(day).padStart(2, "0")}`;
-      const calculatedGoal = dailyGoal(budgetCents / 100, date);
-      const goalCents = isCriticalDate(date)
-        ? Math.min(50000 * 100, Math.round(calculatedGoal.normalGoal * 100))
-        : Math.round(calculatedGoal.goal * 100);
-      const debitCents = nextValues.get(date) ?? 0;
+      const originalGoalCents = Math.round(getPurchaseLimitForDate(date).limit * 100);
+      const debitCents = currentFlowValues.get(date) ?? 0;
+      const goalCents = date.startsWith("2026-10") && !isCriticalDate(date) && debitCents <= originalGoalCents
+        ? debitCents + (originalGoalCents - debitCents <= OCTOBER_TIGHTENING_THRESHOLD * 100
+          ? 0
+          : Math.round((originalGoalCents - debitCents) * OCTOBER_TIGHTENING_FACTOR))
+        : originalGoalCents;
       if (debitCents < goalCents) availableCents += goalCents - debitCents;
       if (debitCents > goalCents) exceededCents += debitCents - goalCents;
     }
-    const hasImport = Array.from(nextValues.keys()).some((date) => date.startsWith(month));
+    const hasImport = Array.from(currentFlowValues.keys()).some((date) => date.startsWith(month));
     return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: false };
   });
   return { runs, increases, monthlyTotals, septemberToDecemberTotalCents, monthlyBudgets };

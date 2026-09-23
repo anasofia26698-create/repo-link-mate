@@ -9,6 +9,8 @@ import {
   calculateDaysFromReference,
   getPurchaseLimitForDate,
   parsePaymentDates,
+  OCTOBER_TIGHTENING_FACTOR,
+  OCTOBER_TIGHTENING_THRESHOLD,
 } from "@/lib/simulationRules";
 import { confirmPurchases, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
 import { AuditTab } from "@/components/cashflow/AuditTab";
@@ -40,13 +42,11 @@ type Entry = { id: string; date: string; debit: number; source: "imported" | "ma
 type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
-const OCTOBER_TIGHTENING_FACTOR = 0.1184;
-
 function getTightenedFlowLimit(date: string, debit: number, factor: number) {
   const target = getPurchaseLimitForDate(date);
   if (!date.startsWith("2026-10") || target.isCritical || debit > target.limit) return target;
   const currentFree = target.limit - debit;
-  const newFree = currentFree <= 10000 ? 0 : currentFree * factor;
+  const newFree = currentFree <= OCTOBER_TIGHTENING_THRESHOLD ? 0 : currentFree * factor;
   return { ...target, limit: debit + newFree };
 }
 
