@@ -3,11 +3,15 @@ export type PaymentDate = { date: string; raw: string };
 export const WEEKDAY_AVERAGE_SALES = [87000, 124000, 124000, 124000, 123000, 127000, 133000] as const;
 export const WEEKDAY_NAMES = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"] as const;
 export const CRITICAL_PAYMENT_DAYS = [5, 10, 15, 20, 25] as const;
+/** Configuração fixa de gestão: não é derivada nem alterada por importações. */
 export const PURCHASE_RATIO = 0.549;
+export const REDUCED_FLOW_START_DATE = "2026-09-01";
+export const REDUCED_FLOW_END_DATE = "2026-10-31";
 export const OCTOBER_TIGHTENING_FACTOR = 0.1184;
 export const OCTOBER_TIGHTENING_THRESHOLD = 10000;
 
 export function getPurchaseRatioForDate(date: string): number {
+  // Setembro/outubro permanecem na configuração reduzida mesmo após novas planilhas.
   return PURCHASE_RATIO;
 }
 
