@@ -250,13 +250,13 @@ export function AuditTab() {
             {comparison.isLoading ? <div className="empty">Calculando totais mensais...</div> : (
               <div className="monthly-totals-list">
                 {comparison.data?.monthlyTotals.map((item) => <div className="monthly-total-row" key={item.month}><span>{monthLabel(item.month)}</span><strong>{money(item.totalDebitCents / 100)}</strong></div>)}
-                <div className="monthly-total-row monthly-total-grand"><span>TOTAL GERAL (Out/2026 a Jan/2027)</span><strong>{money((comparison.data?.periodTotalCents ?? 0) / 100)}</strong></div>
+                <div className="monthly-total-row monthly-total-grand"><span>TOTAL GERAL (Set/2026 a Fev/2027)</span><strong>{money((comparison.data?.periodTotalCents ?? 0) / 100)}</strong></div>
               </div>
             )}
           </section>
           <section className="card free-purchase-card">
             <div className="card-heading"><div><h2>Livre para compra por mês</h2><p>Livre para compra = orçamento de compra do mês − total a pagar do mês.</p></div><CalendarDays size={21} /></div>
-            {comparison.isLoading ? <div className="empty">Calculando disponibilidade mensal...</div> : <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Mês</th><th>Orçamento de compra</th><th>Total a pagar</th><th>Livre para compra</th><th>Limite ultrapassado</th></tr></thead><tbody>{comparison.data?.monthlyBudgets.map((item) => <tr key={item.month}><td><strong>{monthLabel(item.month)}</strong></td><td>{money(item.budgetCents / 100)}</td><td>{item.hasImport ? money(item.totalDebitCents / 100) : "Aguardando importação"}</td><td style={{ color: item.availableCents > 0 ? "#147d3f" : "#b42318", fontWeight: 700 }}>{item.hasImport ? money(item.availableCents / 100) : "Aguardando importação"}</td><td style={{ color: item.exceededCents > 0 ? "#b42318" : "#147d3f", fontWeight: 700 }}>{item.hasImport ? money(item.exceededCents / 100) : "Aguardando importação"}</td></tr>)}</tbody></table></div>}
+            {comparison.isLoading ? <div className="empty">Calculando disponibilidade mensal...</div> : <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Mês</th><th>Orçamento de compra</th><th>Total a pagar</th><th>Livre para compra</th><th>Limite ultrapassado</th></tr></thead><tbody>{comparison.data?.monthlyBudgets.map((item) => <tr key={item.month}><td><strong>{monthLabel(item.month)}</strong></td><td>{money(item.budgetCents / 100)}</td><td>{item.hasImport ? money(item.totalDebitCents / 100) : "Aguardando importação"}</td><td style={{ color: item.blocked ? "#b42318" : item.availableCents > 0 ? "#147d3f" : "#b42318", fontWeight: 700 }}>{item.blocked ? "BLOQUEADO" : item.hasImport ? money(item.availableCents / 100) : "Aguardando importação"}</td><td style={{ color: item.blocked || item.exceededCents > 0 ? "#b42318" : "#147d3f", fontWeight: 700 }}>{item.blocked ? "BLOQUEADO" : item.hasImport ? money(item.exceededCents / 100) : "Aguardando importação"}</td></tr>)}</tbody></table></div>}
           </section>
         </div>
       </div>

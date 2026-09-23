@@ -312,7 +312,7 @@ export type ImportComparison = {
   monthlyBudgets: ImportMonthlyBudget[];
 };
 
-const AUDIT_MONTHS = ["2026-10", "2026-11", "2026-12", "2027-01"];
+const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
 
 /** Lê todo o histórico permanente e calcula os aumentos entre importações consecutivas. */
 export async function importComparison(): Promise<ImportComparison> {
@@ -334,12 +334,14 @@ export async function importComparison(): Promise<ImportComparison> {
   }));
   const budgetMonths = AUDIT_MONTHS;
   const AUDIT_PURCHASE_BUDGETS: Record<string, number> = {
+    "2026-09": 190684100,
     "2026-10": 198260300,
     "2026-11": 189146900,
     "2026-12": 197436800,
     "2027-01": 196558400,
+    "2027-02": 175261300,
   };
-  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: false }));
+  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: month === "2026-09" }));
   if (!runs.length) {
     return {
       runs,
@@ -435,6 +437,7 @@ export async function importComparison(): Promise<ImportComparison> {
       const date = `${month}-${String(day).padStart(2, "0")}`;
       const originalGoalCents = Math.round(getPurchaseLimitForDate(date).limit * 100);
       const debitCents = currentFlowValues.get(date) ?? 0;
+      if (month === "2026-09") continue;
       const goalCents = date.startsWith("2026-10") && !isCriticalDate(date) && debitCents <= originalGoalCents
         ? debitCents + (originalGoalCents - debitCents <= OCTOBER_TIGHTENING_THRESHOLD * 100
           ? 0
@@ -444,7 +447,7 @@ export async function importComparison(): Promise<ImportComparison> {
       if (debitCents > goalCents) exceededCents += debitCents - goalCents;
     }
     const hasImport = Array.from(currentFlowValues.keys()).some((date) => date.startsWith(month));
-    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: false };
+    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: month === "2026-09" };
   });
   return { runs, increases, monthlyTotals, periodTotalCents, monthlyBudgets };
 }
