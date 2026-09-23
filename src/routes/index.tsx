@@ -8,6 +8,7 @@ import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
   getPurchaseLimitForDate,
+  isFrozenFlowDate,
   parsePaymentDates,
   OCTOBER_TIGHTENING_FACTOR,
   OCTOBER_TIGHTENING_THRESHOLD,
@@ -125,6 +126,7 @@ function HomePage() {
           critical: criticalLabel(date),
           weekday: target.weekday,
           isCritical: target.isCritical,
+          isFrozen: target.isFrozen,
         };
       });
   }, [activeEntries, octoberTighteningFactor]);
@@ -146,8 +148,8 @@ function HomePage() {
     return parsed.map(({ term, date }) => {
       const existing = grouped.find((row) => row.date === date)?.debit || 0;
       const target = getTightenedFlowLimit(date, existing, octoberTighteningFactor);
-      const canBuy = existing + installment <= target.limit;
-      return { term, date, existing, installment, limit: target.limit, weekday: target.weekday, isCritical: target.isCritical, canBuy };
+      const canBuy = !isFrozenFlowDate(date) && existing + installment <= target.limit;
+      return { term, date, existing, installment, limit: target.limit, weekday: target.weekday, isCritical: target.isCritical, isFrozen: target.isFrozen, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, octoberTighteningFactor]);
 
@@ -163,6 +165,10 @@ function HomePage() {
     }
     if (!responsible) {
       toast.error("Informe seu nome para confirmar a compra.");
+      return;
+    }
+    if (selected.some((scenario) => scenario.isFrozen)) {
+      toast.error("Compra bloqueada: o fluxo de setembro de 2026 está congelado.");
       return;
     }
     confirmMutation.mutate(
@@ -442,15 +448,19 @@ function HomePage() {
                         </div>
                         <div className="scenario-alert">
                           <div className="scenario-alert-main">
-                            {scenario.existing <= scenario.limit
+                            {scenario.isFrozen
+                              ? "BLOQUEADO — Fluxo congelado em setembro"
+                              : scenario.existing <= scenario.limit
                               ? "Saldo Disponível para compra no dia"
                               : "Valor ultrapassado da meta diária"}
-                            <strong className={scenario.existing <= scenario.limit ? "green-text" : "red-text"}>
-                              {money(Math.abs(scenario.limit - scenario.existing))}
+                            <strong className={scenario.isFrozen ? "red-text" : scenario.existing <= scenario.limit ? "green-text" : "red-text"}>
+                              {scenario.isFrozen ? money(0) : money(Math.abs(scenario.limit - scenario.existing))}
                             </strong>
                           </div>
                           <div className="scenario-alert-support">
-                            {scenario.existing <= scenario.limit
+                            {scenario.isFrozen
+                              ? "Nenhuma compra pode ter vencimento em setembro de 2026."
+                              : scenario.existing <= scenario.limit
                               ? "Débitos existentes + parcela ficam dentro do limite."
                               : "Débitos existentes + parcela ultrapassam o limite."}
                           </div>
@@ -484,7 +494,8 @@ function HomePage() {
                     const date = nextCriticalDate(item.day, today);
                     const flow = grouped.find((row) => row.date === date);
                     const target = getTightenedFlowLimit(date, flow?.debit ?? 0, octoberTighteningFactor);
-                    const exceeded = flow ? flow.debit > target.limit : false;
+                    const frozen = isFrozenFlowDate(date);
+                    const exceeded = !frozen && flow ? flow.debit > target.limit : false;
                     return (
                       <div className={"critical-item " + (exceeded ? "critical-risk" : "")} key={item.day}>
                         <div className="critical-event">
@@ -501,7 +512,7 @@ function HomePage() {
                         </div>
                         <div className="critical-amount">
                           <b className={exceeded ? "red-text" : "green-text"}>{money(flow?.debit ?? 0)}</b>
-                          <small>{flow ? (exceeded ? "limite ultrapassado" : `${money(target.limit - flow.debit)} livres`) : "sem débitos"}</small>
+                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : flow ? (exceeded ? "limite ultrapassado" : `${money(target.limit - flow.debit)} livres`) : "sem débitos"}</small>
                         </div>
                       </div>
                     );
@@ -530,7 +541,7 @@ function HomePage() {
                       </div>
                       <div className="timeline-value">
                         <strong className={row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</strong>
-                        <span>{row.exceeded ? "Limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
+                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : row.exceeded ? "Limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
                       </div>
                     </div>
                   ))}

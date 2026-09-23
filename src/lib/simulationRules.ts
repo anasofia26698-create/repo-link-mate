@@ -7,8 +7,14 @@ export const CRITICAL_PAYMENT_DAYS = [5, 10, 15, 20, 25] as const;
 export const PURCHASE_RATIO = 0.549;
 export const REDUCED_FLOW_START_DATE = "2026-09-01";
 export const REDUCED_FLOW_END_DATE = "2026-10-31";
+export const FROZEN_FLOW_START_DATE = "2026-09-01";
+export const FROZEN_FLOW_END_DATE = "2026-09-30";
 export const OCTOBER_TIGHTENING_FACTOR = 0.1184;
 export const OCTOBER_TIGHTENING_THRESHOLD = 10000;
+
+export function isFrozenFlowDate(date: string): boolean {
+  return date >= FROZEN_FLOW_START_DATE && date <= FROZEN_FLOW_END_DATE;
+}
 
 export function getPurchaseRatioForDate(date: string): number {
   // Setembro/outubro permanecem na configuração reduzida mesmo após novas planilhas.
@@ -26,12 +32,13 @@ export function getPurchaseLimitForDate(date: string) {
     averageSales,
     weekdayLimit,
     isCritical,
+    isFrozen: isFrozenFlowDate(date),
     limit: isCritical ? Math.min(50000, weekdayLimit) : weekdayLimit,
   };
 }
 
 export function canPurchaseOnDate(date: string, existingDebits: number, purchaseValue: number): boolean {
-  return existingDebits + purchaseValue <= getPurchaseLimitForDate(date).limit;
+  return !isFrozenFlowDate(date) && existingDebits + purchaseValue <= getPurchaseLimitForDate(date).limit;
 }
 
 export function parsePaymentDates(value: string): PaymentDate[] {
