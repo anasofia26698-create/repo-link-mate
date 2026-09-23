@@ -428,7 +428,9 @@ export async function importComparison(): Promise<ImportComparison> {
     const totalDebitCents = monthlyTotals.find((item) => item.month === month)?.totalDebitCents ?? 0;
     let availableCents = 0;
     let exceededCents = 0;
-    const [year, monthNumber] = month.split("-").map(Number);
+    const [yearText = "2026", monthText = "01"] = month.split("-");
+    const year = Number(yearText);
+    const monthNumber = Number(monthText);
     const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = `${month}-${String(day).padStart(2, "0")}`;
