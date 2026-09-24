@@ -41,6 +41,58 @@ export function canPurchaseOnDate(date: string, existingDebits: number, purchase
   return !isFrozenFlowDate(date) && existingDebits + purchaseValue <= getPurchaseLimitForDate(date).limit;
 }
 
+export type DailyRecovery = {
+  limit: number;
+  applied: boolean;
+  pct: number;
+  totalExceededCents: number;
+  lastExceededDate?: string;
+};
+
+/** Calcula a meta efetiva de um dia sem alterar setembro/outubro. */
+export function getAutomaticRecoveryForDate(date: string, debitByDateCents: ReadonlyMap<string, number>): DailyRecovery {
+  if (date < "2026-11-01") {
+    return { limit: getPurchaseLimitForDate(date).limit, applied: false, pct: 0, totalExceededCents: 0 };
+  }
+  const [yearText, monthText] = date.split("-");
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let monthlyGoalCents = 0;
+  let totalExceededCents = 0;
+  let lastExceededDate: string | undefined;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const currentDate = `${yearText}-${monthText}-${String(day).padStart(2, "0")}`;
+    const baseGoalCents = Math.round(getPurchaseLimitForDate(currentDate).limit * 100);
+    monthlyGoalCents += baseGoalCents;
+    const debitCents = debitByDateCents.get(currentDate) ?? 0;
+    if (debitCents > baseGoalCents) {
+      totalExceededCents += debitCents - baseGoalCents;
+      lastExceededDate = currentDate;
+    }
+  }
+  if (!totalExceededCents || !monthlyGoalCents || !lastExceededDate || date <= lastExceededDate || getPurchaseLimitForDate(date).isCritical) {
+    return { limit: getPurchaseLimitForDate(date).limit, applied: false, pct: 0, totalExceededCents, lastExceededDate };
+  }
+  const pct = totalExceededCents / monthlyGoalCents;
+  const baseLimit = getPurchaseLimitForDate(date).limit;
+  return { limit: Math.max(0, baseLimit * (1 - pct)), applied: true, pct, totalExceededCents, lastExceededDate };
+}
+
+export function getAutomaticRecoverySummary(month: string, debitByDateCents: ReadonlyMap<string, number>) {
+  const [yearText, monthText] = month.split("-");
+  const year = Number(yearText);
+  const monthNumber = Number(monthText);
+  const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  let last: DailyRecovery | undefined;
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const date = `${yearText}-${monthText}-${String(day).padStart(2, "0")}`;
+    const result = getAutomaticRecoveryForDate(date, debitByDateCents);
+    if (result.totalExceededCents > 0) last = result;
+  }
+  return last && last.lastExceededDate ? last : null;
+}
+
 export function parsePaymentDates(value: string): PaymentDate[] {
   return value
     .split(/[;,]+/)

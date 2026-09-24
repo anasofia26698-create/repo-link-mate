@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
 import { isCriticalDate } from "./buyerRules";
-import { getPurchaseLimitForDate, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
+import { getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
   id: number;
   date: string;
@@ -125,6 +125,25 @@ export async function replaceImportedEntries(input: {
   if (entriesToInsert.length) {
     const { error } = await supabaseAdmin.from("cash_flow_entries").insert(entriesToInsert);
     if (error) throw new Error(error.message);
+  }
+
+  const recoveryByDate = new Map<string, number>();
+  for (const entry of entriesToInsert) recoveryByDate.set(entry.date, (recoveryByDate.get(entry.date) ?? 0) + entry.debit_cents);
+  const automaticRecovery = ["2026-11", "2026-12", "2027-01", "2027-02"]
+    .map((month) => ({ month, summary: getAutomaticRecoverySummary(month, recoveryByDate) }))
+    .filter((item) => item.summary?.applied)
+    .map(({ month, summary }) => ({
+      month,
+      exceededCents: summary!.totalExceededCents,
+      pct: summary!.pct,
+      fromDate: summary!.lastExceededDate,
+    }));
+  if (automaticRecovery.length) {
+    const { error: recoveryAuditError } = await supabaseAdmin
+      .from("audit_events")
+      .update({ details: JSON.stringify({ ...(input.importMeta ?? {}), automaticRecovery }) })
+      .eq("id", auditEventId);
+    if (recoveryAuditError) throw new Error(recoveryAuditError.message);
   }
 
   if (input.importMeta && input.entries.length) {
@@ -438,10 +457,13 @@ export async function importComparison(): Promise<ImportComparison> {
       const originalGoalCents = Math.round(getPurchaseLimitForDate(date).limit * 100);
       const debitCents = currentFlowValues.get(date) ?? 0;
       if (month === "2026-09") continue;
+      const recovery = getAutomaticRecoveryForDate(date, currentFlowValues);
       const goalCents = date.startsWith("2026-10") && !isCriticalDate(date) && debitCents <= originalGoalCents
         ? debitCents + (originalGoalCents - debitCents <= OCTOBER_TIGHTENING_THRESHOLD * 100
           ? 0
           : Math.round((originalGoalCents - debitCents) * OCTOBER_TIGHTENING_FACTOR))
+        : date >= "2026-11-01" && recovery.applied
+          ? Math.round(recovery.limit * 100)
         : originalGoalCents;
       if (debitCents < goalCents) availableCents += goalCents - debitCents;
       if (debitCents > goalCents) exceededCents += debitCents - goalCents;

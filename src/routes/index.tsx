@@ -7,6 +7,8 @@ import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
+  getAutomaticRecoveryForDate,
+  getAutomaticRecoverySummary,
   getPurchaseLimitForDate,
   isFrozenFlowDate,
   parsePaymentDates,
@@ -114,19 +116,23 @@ function HomePage() {
   const grouped = useMemo(() => {
     const groups = new Map<string, number>();
     activeEntries.forEach((entry) => groups.set(entry.date, (groups.get(entry.date) || 0) + Number(entry.debit || 0)));
+    const debitByDateCents = new Map(Array.from(groups.entries()).map(([date, debit]) => [date, Math.round(debit * 100)]));
     return Array.from(groups.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, debit]) => {
+        const recovery = getAutomaticRecoveryForDate(date, debitByDateCents);
         const target = getTightenedFlowLimit(date, debit, octoberTighteningFactor);
+        const effectiveTarget = date >= "2026-11-01" && recovery.applied ? { ...target, limit: recovery.limit } : target;
         return {
           date,
           debit,
-          limit: target.limit,
-          exceeded: debit > target.limit,
+          limit: effectiveTarget.limit,
+          exceeded: debit > effectiveTarget.limit,
           critical: criticalLabel(date),
-          weekday: target.weekday,
-          isCritical: target.isCritical,
-          isFrozen: target.isFrozen,
+          weekday: effectiveTarget.weekday,
+          isCritical: effectiveTarget.isCritical,
+          isFrozen: effectiveTarget.isFrozen,
+          recovery,
         };
       });
   }, [activeEntries, octoberTighteningFactor]);
@@ -147,11 +153,21 @@ function HomePage() {
     const installment = parsed.length ? purchase / parsed.length : 0;
     return parsed.map(({ term, date }) => {
       const existing = grouped.find((row) => row.date === date)?.debit || 0;
+      const debitByDateCents = new Map(grouped.map((row) => [row.date, Math.round(row.debit * 100)]));
+      const recovery = getAutomaticRecoveryForDate(date, debitByDateCents);
       const target = getTightenedFlowLimit(date, existing, octoberTighteningFactor);
-      const canBuy = !isFrozenFlowDate(date) && existing + installment <= target.limit;
-      return { term, date, existing, installment, limit: target.limit, weekday: target.weekday, isCritical: target.isCritical, isFrozen: target.isFrozen, canBuy };
+      const effectiveTarget = date >= "2026-11-01" && recovery.applied ? { ...target, limit: recovery.limit } : target;
+      const canBuy = !isFrozenFlowDate(date) && existing + installment <= effectiveTarget.limit;
+      return { term, date, existing, installment, limit: effectiveTarget.limit, weekday: effectiveTarget.weekday, isCritical: effectiveTarget.isCritical, isFrozen: effectiveTarget.isFrozen, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, octoberTighteningFactor]);
+
+  const recoveryNotes = useMemo(() => {
+    const debitByDateCents = new Map(grouped.map((row) => [row.date, Math.round(row.debit * 100)]));
+    return ["2026-11", "2026-12", "2027-01", "2027-02"]
+      .map((month) => ({ month, summary: getAutomaticRecoverySummary(month, debitByDateCents) }))
+      .filter((item) => item.summary?.applied);
+  }, [grouped]);
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
@@ -524,6 +540,7 @@ function HomePage() {
                   <div>
                     <h2>Débitos por dia</h2>
                     <p>Todos os débitos importados, organizados por data e comparados com a meta do dia.</p>
+                    {recoveryNotes.map(({ month, summary }) => summary && <p key={month} className="red-text">Ajuste automático: ultrapassado de {money(summary.totalExceededCents / 100)} ({(summary.pct * 100).toFixed(2).replace(".", ",")}%) redistribuído na meta diária dos dias restantes do dia {dateBR(summary.lastExceededDate ?? "") }.</p>)}
                   </div>
                 </div>
                 <div className="timeline-list">
