@@ -329,6 +329,12 @@ export type ImportComparison = {
   }[];
   periodTotalCents: number;
   monthlyBudgets: ImportMonthlyBudget[];
+  automaticRecovery: {
+    month: string;
+    totalExceededCents: number;
+    pct: number;
+    lastExceededDate: string;
+  }[];
 };
 
 const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
@@ -368,6 +374,7 @@ export async function importComparison(): Promise<ImportComparison> {
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
       periodTotalCents: 0,
       monthlyBudgets: emptyMonthlyBudgets,
+      automaticRecovery: [],
     };
   }
 
@@ -399,6 +406,7 @@ export async function importComparison(): Promise<ImportComparison> {
       monthlyTotals: AUDIT_MONTHS.map((month) => ({ month, totalDebitCents: 0 })),
       periodTotalCents: 0,
       monthlyBudgets: emptyMonthlyBudgets,
+      automaticRecovery: [],
     };
   }
   const current = runs[1] ?? latest;
@@ -425,6 +433,15 @@ export async function importComparison(): Promise<ImportComparison> {
     ),
   }));
   const periodTotalCents = monthlyTotals.reduce((total, item) => total + item.totalDebitCents, 0);
+  const automaticRecovery = ["2026-11", "2026-12", "2027-01", "2027-02"]
+    .map((month) => ({ month, summary: getAutomaticRecoverySummary(month, currentFlowValues) }))
+    .filter((item) => item.summary?.applied)
+    .map(({ month, summary }) => ({
+      month,
+      totalExceededCents: summary!.totalExceededCents,
+      pct: summary!.pct,
+      lastExceededDate: summary!.lastExceededDate!,
+    }));
   const threshold = 5000 * 100;
   const increases = Array.from(dates)
     .map((date) => {
@@ -471,5 +488,5 @@ export async function importComparison(): Promise<ImportComparison> {
     const hasImport = Array.from(currentFlowValues.keys()).some((date) => date.startsWith(month));
     return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: month === "2026-09" };
   });
-  return { runs, increases, monthlyTotals, periodTotalCents, monthlyBudgets };
+  return { runs, increases, monthlyTotals, periodTotalCents, monthlyBudgets, automaticRecovery };
 }

@@ -8,7 +8,6 @@ import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
   getAutomaticRecoveryForDate,
-  getAutomaticRecoverySummary,
   getPurchaseLimitForDate,
   isFrozenFlowDate,
   parsePaymentDates,
@@ -161,13 +160,6 @@ function HomePage() {
       return { term, date, existing, installment, limit: effectiveTarget.limit, weekday: effectiveTarget.weekday, isCritical: effectiveTarget.isCritical, isFrozen: effectiveTarget.isFrozen, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, octoberTighteningFactor]);
-
-  const recoveryNotes = useMemo(() => {
-    const debitByDateCents = new Map(grouped.map((row) => [row.date, Math.round(row.debit * 100)]));
-    return ["2026-11", "2026-12", "2027-01", "2027-02"]
-      .map((month) => ({ month, summary: getAutomaticRecoverySummary(month, debitByDateCents) }))
-      .filter((item) => item.summary?.applied);
-  }, [grouped]);
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
@@ -540,7 +532,6 @@ function HomePage() {
                   <div>
                     <h2>Débitos por dia</h2>
                     <p>Todos os débitos importados, organizados por data e comparados com a meta do dia.</p>
-                    {recoveryNotes.map(({ month, summary }) => summary && <p key={month} className="red-text">Ajuste automático: ultrapassado de {money(summary.totalExceededCents / 100)} ({(summary.pct * 100).toFixed(2).replace(".", ",")}%) redistribuído na meta diária dos dias restantes do dia {dateBR(summary.lastExceededDate ?? "") }.</p>)}
                   </div>
                 </div>
                 <div className="timeline-list">
