@@ -2,7 +2,7 @@
 @source "../src";
 @import "tw-animate-css";
 @custom-variant dark (&:is(.dark *));
-:root { --background:#f3f4f6; --foreground:#17191c; --border:#dfe2e6; --muted:#6b7280; --green:#177245; --red:#b42318; --yellow:#8a5a00; --blue:#1f4f8a; }
+:root { --background:#f3f4f6; --foreground:#17191c; --border:#dfe2e6; --muted:#6b7280; --green:#177245; --red:#b42318; --yellow:#8a5a00; --blue:#1f4f8a; --chart-marcelo:#176b43; --chart-suellen:#2f6da7; --chart-mauricio:#b06a2b; }
 @layer base { * { box-sizing:border-box; } body { margin:0; background:var(--background); color:var(--foreground); font-family:'DM Sans',sans-serif; } button,input { font:inherit; } button { cursor:pointer; transition:transform .16s ease, background-color .16s ease, border-color .16s ease; } button:active { transform:scale(.98); } }
 .simple-app { min-height:100vh; background:#f3f4f6; } .simple-header { height:72px; display:flex; align-items:center; justify-content:space-between; padding:0 32px; background:#fff; border-bottom:1px solid var(--border); } .brand { display:flex; align-items:center; gap:12px; } .brand-mark { display:grid; place-items:center; width:36px; height:36px; border-radius:8px; background:#111827; color:#fff; font:600 12px 'IBM Plex Mono'; } .brand strong { display:block; font-size:15px; letter-spacing:-.02em; } .brand span { display:block; margin-top:2px; color:#7b8490; font-size:11px; } nav { display:flex; gap:6px; } nav button { padding:10px 14px; border:0; border-radius:7px; color:#6b7280; background:transparent; font-size:13px; font-weight:600; } nav button:hover { background:#f1f2f4; color:#111827; } nav button.active { color:#111827; background:#e9eaec; } .mobile-menu { display:none; border:0; background:transparent; color:#414750; }
 .simple-main { max-width:1260px; margin:0 auto; padding:42px 28px 60px; } .page-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:26px; } .eyebrow { margin:0 0 7px; color:#707985; font:600 10px 'IBM Plex Mono'; letter-spacing:.14em; text-transform:uppercase; } h1,h2,p { margin-top:0; } h1 { margin-bottom:8px; font-size:34px; line-height:1.1; letter-spacing:-.04em; } h2 { margin-bottom:5px; font-size:18px; letter-spacing:-.02em; } .subheading { max-width:650px; margin-bottom:0; color:#6b7280; font-size:14px; line-height:1.5; }
@@ -117,6 +117,12 @@
 .consumption-card { display:grid; align-content:start; }
 .general-progress-track { width:100%; height:10px; margin-top:12px; overflow:hidden; border-radius:99px; background:#e8f3eb; }
 .general-progress-fill { height:100%; border-radius:99px; background:#4ca66e; transition:width .2s ease; }
+.buyer-evolution-card { margin-top:16px; }
+.buyer-evolution-chart { min-width:0; padding:18px 18px 12px; overflow-x:auto; }
+.buyer-chart-container { width:100%; min-width:760px; height:360px; aspect-ratio:auto; }
+.buyer-chart-tooltip-row { display:flex; min-width:180px; align-items:center; justify-content:space-between; gap:20px; }
+.buyer-chart-tooltip-row span { color:var(--muted); }
+.buyer-chart-tooltip-row strong { color:var(--foreground); }
 @media (max-width:800px) { .purchase-dashboard-heading { align-items:stretch; } .dashboard-month-select { width:100%; min-width:0; } }
 
 /* Meta de compra por dia da semana e datas críticas. */

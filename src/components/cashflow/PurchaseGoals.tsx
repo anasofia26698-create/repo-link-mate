@@ -3,8 +3,11 @@ import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-
 import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalBudget, saveBuyerGoalConfig } from "@/lib/buyer.functions";
+import { listCashFlow } from "@/lib/cashflow.functions";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -195,7 +198,13 @@ function BuyerGoalsForm() {
   );
 }
 
-export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
+const buyerChartConfig = {
+  Marcelo: { label: "Marcelo", color: "var(--chart-marcelo)" },
+  Suellen: { label: "Suellen", color: "var(--chart-suellen)" },
+  "Maurício": { label: "Maurício", color: "var(--chart-mauricio)" },
+} satisfies ChartConfig;
+
+export function PurchasesDashboardTab() {
   const currentPeriod = new Date().toISOString().slice(0, 7);
   const [period, setPeriod] = useState(currentPeriod);
   const overview = useQuery({
@@ -204,14 +213,21 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
     refetchInterval: 300_000,
     refetchIntervalInBackground: true,
   });
+  const sharedFlow = useQuery({
+    queryKey: ["cash-flow-entries"],
+    queryFn: () => listCashFlow(),
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: true,
+  });
   const periods = useMemo(() => {
     const fixed = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01"];
     const imported = (overview.data?.payments ?? []).map((item) => item.date.slice(0, 7));
+    const cashFlowMonths = (sharedFlow.data ?? []).filter((item) => item.source === "imported").map((item) => item.date.slice(0, 7));
     const configured = (overview.data?.budgets ?? []).map((item) => item.period);
-    return [...new Set([...fixed, currentPeriod, ...imported, ...configured])]
+    return [...new Set([...fixed, currentPeriod, ...imported, ...cashFlowMonths, ...configured])]
       .filter((item) => item >= "2026-09")
       .sort();
-  }, [currentPeriod, overview.data]);
+  }, [currentPeriod, overview.data, sharedFlow.data]);
   const rows = useMemo(() => {
     const budgets = overview.data?.budgets ?? [];
     const payments = overview.data?.payments ?? [];
@@ -224,15 +240,34 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
       return { buyer, budget, bought, available: budget - bought, pct };
     });
   }, [overview.data, period]);
-  const totals = rows.reduce(
-    (total, row) => ({ budget: total.budget + row.budget, bought: total.bought + row.bought }),
-    { budget: 0, bought: 0 },
-  );
-  const balance = totals.budget - totals.bought;
-  const consumption = totals.budget > 0 ? totals.bought / totals.budget * 100 : totals.bought > 0 ? 100 : 0;
-  const consumptionTone = consumption > 100 ? "progress-danger" : consumption >= 80 ? "progress-warning" : "";
+  const totalBudget = rows.reduce((total, row) => total + row.budget, 0);
+  const totalPayable = (sharedFlow.data ?? [])
+    .filter((item) => item.source === "imported" && item.date.slice(0, 7) === period)
+    .reduce((total, item) => total + item.debitCents, 0) / 100;
+  const balance = totalBudget - totalPayable;
+  const consumption = totalBudget > 0 ? totalPayable / totalBudget * 100 : totalPayable > 0 ? 100 : 0;
+  const consumptionTone = consumption > 100 ? "progress-danger" : "";
+  const chartData = useMemo(() => {
+    const [year = "", month = ""] = period.split("-");
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+    const points = Array.from({ length: daysInMonth }, (_, index) => ({
+      day: String(index + 1).padStart(2, "0"),
+      Marcelo: 0,
+      Suellen: 0,
+      "Maurício": 0,
+    }));
+    for (const payment of overview.data?.payments ?? []) {
+      if (payment.source !== "imported" || payment.date.slice(0, 7) !== period) continue;
+      const dayIndex = Number(payment.date.slice(8, 10)) - 1;
+      const point = points[dayIndex];
+      if (!point || !BUYERS.includes(payment.buyer as (typeof BUYERS)[number])) continue;
+      const buyer = payment.buyer as (typeof BUYERS)[number];
+      point[buyer] += payment.amountCents / 100;
+    }
+    return points;
+  }, [overview.data?.payments, period]);
   return (
-    <PasswordGate skip={!requireBuyerAccess}>
+    <>
       <div className="page-heading page-heading-compact purchase-dashboard-heading">
         <div>
           <p className="eyebrow">Metas compras</p>
@@ -249,11 +284,11 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
       <div className="purchase-kpis">
         <div className="summary-card">
           <span>Dotação total</span>
-          <strong>{money(totals.budget)}</strong>
+          <strong>{money(totalBudget)}</strong>
         </div>
         <div className="summary-card">
-          <span>Comprado total</span>
-          <strong>{money(totals.bought)}</strong>
+          <span>A pagar total mês</span>
+          <strong>{money(totalPayable)}</strong>
         </div>
         <div className="summary-card">
           <span>Saldo disponível</span>
@@ -261,14 +296,15 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
         </div>
         <div className="summary-card consumption-card">
           <span>Consumo geral</span>
-          <strong>{formatPercent(consumption)}</strong>
+          <strong className={consumption > 100 ? "red-text" : "green-text"}>{formatPercent(consumption)}</strong>
           <div className="general-progress-track" aria-label={`Consumo geral de ${formatPercent(consumption)}`}>
             <div className={`general-progress-fill ${consumptionTone}`} style={{ width: `${Math.min(100, Math.max(0, consumption))}%` }} />
           </div>
         </div>
       </div>
       <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} />
-    </PasswordGate>
+      <BuyerEvolutionChart data={chartData} period={period} loading={overview.isLoading} />
+    </>
   );
 }
 
@@ -335,6 +371,55 @@ function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[];
             </div>
           ))}
       </div>
+    </section>
+  );
+}
+
+type BuyerChartPoint = { day: string; Marcelo: number; Suellen: number; "Maurício": number };
+
+function BuyerEvolutionChart({ data, period, loading }: { data: BuyerChartPoint[]; period: string; loading: boolean }) {
+  const hasPayments = data.some((point) => BUYERS.some((buyer) => point[buyer] > 0));
+  return (
+    <section className="card buyer-evolution-card">
+      <div className="card-heading">
+        <div>
+          <h2>Evolução do mês por comprador</h2>
+          <p>{formatMonth(period)} · volume diário de contas a pagar por comprador.</p>
+        </div>
+        <BarChart3 size={21} />
+      </div>
+      {loading ? (
+        <div className="empty">Carregando evolução do mês...</div>
+      ) : !hasPayments ? (
+        <div className="empty">Nenhum pagamento por comprador neste mês.</div>
+      ) : (
+        <div className="buyer-evolution-chart">
+          <ChartContainer config={buyerChartConfig} className="buyer-chart-container">
+            <LineChart data={data} margin={{ top: 12, right: 18, left: 12, bottom: 4 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} minTickGap={14} />
+              <YAxis tickLine={false} axisLine={false} width={86} tickFormatter={(value) => money(Number(value)).replace(",00", "")} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(label) => `Dia ${String(label).padStart(2, "0")}`}
+                    formatter={(value, name) => (
+                      <div className="buyer-chart-tooltip-row">
+                        <span>{buyerChartConfig[String(name) as keyof typeof buyerChartConfig]?.label ?? String(name)}</span>
+                        <strong>{money(Number(value))}</strong>
+                      </div>
+                    )}
+                  />
+                }
+              />
+              <ChartLegend content={<ChartLegendContent />} />
+              {BUYERS.map((buyer) => (
+                <Line key={buyer} type="monotone" dataKey={buyer} stroke={`var(--color-${buyer})`} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              ))}
+            </LineChart>
+          </ChartContainer>
+        </div>
+      )}
     </section>
   );
 }

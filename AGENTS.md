@@ -9,4 +9,4 @@
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
 
-- The Purchases Dashboard derives monthly figures only from persisted buyer budgets and imported buyer payments, never browser-local data, so every user sees the same consolidated totals.
+- The Purchases Dashboard combines persisted buyer budgets with imported principal cash-flow totals for its KPIs and imported buyer payments for buyer breakdowns/charts, never browser-local data, so every user sees the same consolidated figures.
