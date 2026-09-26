@@ -208,7 +208,9 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
     const fixed = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01"];
     const imported = (overview.data?.payments ?? []).map((item) => item.date.slice(0, 7));
     const configured = (overview.data?.budgets ?? []).map((item) => item.period);
-    return [...new Set([...fixed, currentPeriod, ...imported, ...configured])].sort();
+    return [...new Set([...fixed, currentPeriod, ...imported, ...configured])]
+      .filter((item) => item >= "2026-09")
+      .sort();
   }, [currentPeriod, overview.data]);
   const rows = useMemo(() => {
     const budgets = overview.data?.budgets ?? [];
