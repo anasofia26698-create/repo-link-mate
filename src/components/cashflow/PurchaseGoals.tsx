@@ -56,10 +56,10 @@ const emptyGoal = (sector: Sector): Goal => ({
   turnover: 0,
 });
 
-function PasswordGate({ children }: { children: ReactNode }) {
+function PasswordGate({ children, skip = false }: { children: ReactNode; skip?: boolean }) {
   const [password, setPassword] = useState("");
   const [unlocked, setUnlocked] = useState(false);
-  if (unlocked) return <>{children}</>;
+  if (skip || unlocked) return <>{children}</>;
   return (
     <section className="card access-card">
       <LockKeyhole size={28} />
@@ -93,9 +93,9 @@ type MonthlyBuyerConfig = { sales: string; cmv: string; coverage: string; salesP
 const emptyMonthlyConfig = (): MonthlyBuyerConfig => ({ sales: "", cmv: "60", coverage: "", salesPurchases: "" });
 const monthLabel = (period: string) => { const [year, month] = period.split("-"); return year && month ? `${month}/${year}` : period; };
 
-export function GoalsTab() {
+export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
   return (
-    <PasswordGate>
+    <PasswordGate skip={!requireBuyerAccess}>
       <div className="page-heading page-heading-compact">
         <div>
           <p className="eyebrow">Metas compras</p>
@@ -213,7 +213,7 @@ function BuyerGoalsForm() {
   );
 }
 
-export function PurchasesDashboardTab() {
+export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
   const [goals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
   const [purchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
   const rows = goals.map((goal) => {
@@ -227,7 +227,7 @@ export function PurchasesDashboardTab() {
     { budget: 0, bought: 0, balance: 0 },
   );
   return (
-    <PasswordGate>
+    <PasswordGate skip={!requireBuyerAccess}>
       <div className="page-heading page-heading-compact">
         <div>
           <p className="eyebrow">Metas compras</p>

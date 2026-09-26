@@ -346,8 +346,6 @@ function HomePage() {
         <nav className={mobileMenu ? "open" : ""}>
           {nav("fluxo", "Fluxo de Caixa")}
           {nav("importar", "Importar Planilha")}
-          {nav("metas", "Cadastro de Metas")}
-          {nav("dashboard", "Dashboard de Compras")}
           {nav("auditoria", "Auditoria")}
           {nav("comprador", "Comprador")}
         </nav>
