@@ -1,10 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-react";
-import {
-  calculateConsumption,
-  calculatePurchaseBudget,
-  isPurchaseAccessGranted,
-} from "@/lib/purchaseRules";
+import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
@@ -30,20 +26,6 @@ export type Goal = {
   coverage: number;
   turnover: number;
 };
-type Purchase = { id: string; date: string; sector: Sector; supplier: string; value: number; invoice: string };
-
-const GOALS_KEY = "signal-cash-purchase-goals-v1";
-const PURCHASES_KEY = "signal-cash-purchases-v1";
-
-function read<T>(key: string, fallback: T): T {
-  try {
-    if (typeof window === "undefined") return fallback;
-    const value = JSON.parse(localStorage.getItem(key) || "null");
-    return value ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 const emptyGoal = (sector: Sector): Goal => ({
   sector,
@@ -214,26 +196,53 @@ function BuyerGoalsForm() {
 }
 
 export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
-  const [goals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
-  const [purchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
-  const rows = goals.map((goal) => {
-    const budget = calculatePurchaseBudget(goal.sales, goal.cmv, goal.initialStock, goal.finalStock);
-    const bought = purchases.filter((item) => item.sector === goal.sector).reduce((sum, item) => sum + item.value, 0);
-    const consumption = calculateConsumption(budget, bought);
-    return { ...goal, budget, bought, balance: budget - bought, consumption };
+  const currentPeriod = new Date().toISOString().slice(0, 7);
+  const [period, setPeriod] = useState(currentPeriod);
+  const overview = useQuery({
+    queryKey: ["buyer-monthly-overview"],
+    queryFn: () => getBuyerMonthlyOverview(),
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: true,
   });
+  const periods = useMemo(() => {
+    const fixed = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01"];
+    const imported = (overview.data?.payments ?? []).map((item) => item.date.slice(0, 7));
+    const configured = (overview.data?.budgets ?? []).map((item) => item.period);
+    return [...new Set([...fixed, currentPeriod, ...imported, ...configured])].sort();
+  }, [currentPeriod, overview.data]);
+  const rows = useMemo(() => {
+    const budgets = overview.data?.budgets ?? [];
+    const payments = overview.data?.payments ?? [];
+    return BUYERS.map((buyer) => {
+      const budget = (budgets.find((item) => item.period === period && item.buyer === buyer)?.monthlyCents ?? 0) / 100;
+      const bought = payments
+        .filter((item) => item.source === "imported" && item.buyer === buyer && item.date.slice(0, 7) === period)
+        .reduce((sum, item) => sum + item.amountCents, 0) / 100;
+      const pct = budget > 0 ? bought / budget * 100 : bought > 0 ? 100 : 0;
+      return { buyer, budget, bought, available: budget - bought, pct };
+    });
+  }, [overview.data, period]);
   const totals = rows.reduce(
-    (acc, row) => ({ budget: acc.budget + row.budget, bought: acc.bought + row.bought, balance: acc.balance + row.balance }),
-    { budget: 0, bought: 0, balance: 0 },
+    (total, row) => ({ budget: total.budget + row.budget, bought: total.bought + row.bought }),
+    { budget: 0, bought: 0 },
   );
+  const balance = totals.budget - totals.bought;
+  const consumption = totals.budget > 0 ? totals.bought / totals.budget * 100 : totals.bought > 0 ? 100 : 0;
+  const consumptionTone = consumption > 100 ? "progress-danger" : consumption >= 80 ? "progress-warning" : "";
   return (
     <PasswordGate skip={!requireBuyerAccess}>
-      <div className="page-heading page-heading-compact">
+      <div className="page-heading page-heading-compact purchase-dashboard-heading">
         <div>
           <p className="eyebrow">Metas compras</p>
           <h1>Dashboard de Compras</h1>
-          <p className="subheading">Acompanhamento consolidado da dotação das 14 lojas.</p>
+          <p className="subheading">Acompanhamento consolidado de Marcelo, Suellen e Maurício.</p>
         </div>
+        <label className="dashboard-month-select">
+          Mês de referência
+          <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+            {periods.map((item) => <option key={item} value={item}>{formatMonth(item)}</option>)}
+          </select>
+        </label>
       </div>
       <div className="purchase-kpis">
         <div className="summary-card">
@@ -246,52 +255,54 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
         </div>
         <div className="summary-card">
           <span>Saldo disponível</span>
-          <strong className={totals.balance < 0 ? "red-text" : "green-text"}>{money(totals.balance)}</strong>
+          <strong className={balance < 0 ? "red-text" : "green-text"}>{money(balance)}</strong>
         </div>
-        <div className="summary-card">
+        <div className="summary-card consumption-card">
           <span>Consumo geral</span>
-          <strong>{totals.budget > 0 ? (totals.bought / totals.budget * 100).toFixed(1) : "0,0"}%</strong>
+          <strong>{formatPercent(consumption)}</strong>
+          <div className="general-progress-track" aria-label={`Consumo geral de ${formatPercent(consumption)}`}>
+            <div className={`general-progress-fill ${consumptionTone}`} style={{ width: `${Math.min(100, Math.max(0, consumption))}%` }} />
+          </div>
         </div>
       </div>
-      <BuyerMonthlyPanel />
+      <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} />
     </PasswordGate>
   );
 }
 
-function BuyerMonthlyPanel() {
-  const period = new Date().toISOString().slice(0, 7);
-  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
-  const budgets = overview.data?.budgets ?? [];
-  const payments = overview.data?.payments ?? [];
-  const rows = BUYERS.map((buyer: (typeof BUYERS)[number]) => {
-    const found = budgets.find((item) => item.period === period && item.buyer === buyer) ?? budgets.find((item) => item.buyer === buyer);
-    const budget = (found?.monthlyCents ?? 0) / 100;
-    const usedPeriod = found?.period ?? period;
-    const bought =
-      payments
-        .filter((item) => item.buyer === buyer && item.date.slice(0, 7) === usedPeriod)
-        .reduce((sum, item) => sum + item.amountCents, 0) / 100;
-    const pct = budget > 0 ? (bought / budget) * 100 : 0;
-    return { buyer, budget, bought, available: budget - bought, pct, period: usedPeriod };
-  });
+function formatMonth(period: string) {
+  const [year = "", month = ""] = period.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  if (!year || !month || Number.isNaN(date.getTime())) return period;
+  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(1).replace(".", ",")}%`;
+}
+
+type BuyerMonthlyRow = { buyer: (typeof BUYERS)[number]; budget: number; bought: number; available: number; pct: number };
+
+function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[]; period: string; loading: boolean }) {
   return (
     <section className="card">
       <div className="card-heading">
         <div>
           <h2>Atingimento mensal por comprador</h2>
-          <p>Dotação orçamentária do módulo Comprador (Marcelo, Suellen e Maurício).</p>
+          <p>{formatMonth(period)} · metas cadastradas e compras da planilha importada no módulo Comprador.</p>
         </div>
         <BarChart3 size={21} />
       </div>
       <div className="buyer-month-list">
-        {overview.isLoading && <div className="empty">Carregando dotação por comprador...</div>}
-        {!overview.isLoading &&
+        {loading && <div className="empty">Carregando dotação por comprador...</div>}
+        {!loading &&
           rows.map((row) => (
             <div className="buyer-month-row" key={row.buyer}>
               <div className="buyer-month-head">
                 <strong>{row.buyer}</strong>
                 <span>
-                  {row.period} · {row.pct.toFixed(1).replace(".", ",")}%
+                  {formatMonth(period)} · {formatPercent(row.pct)}
                 </span>
               </div>
               <div className="buyer-month-metrics">
@@ -310,12 +321,12 @@ function BuyerMonthlyPanel() {
               </div>
               <div className="buyer-month-track">
                 <div
-                  className={"buyer-month-fill " + (row.pct >= 100 ? "over" : row.pct >= 80 ? "warn" : "")}
+                   className={"buyer-month-fill " + (row.pct > 100 ? "over" : row.pct >= 80 ? "warn" : "")}
                   style={{ width: `${Math.min(100, Math.max(0, row.pct))}%` }}
                 />
               </div>
-              {row.pct >= 100 ? (
-                <div className="buyer-month-warning">Dotação mensal ultrapassada ({row.pct.toFixed(1).replace(".", ",")}%).</div>
+              {row.pct > 100 ? (
+                <div className="buyer-month-warning">Dotação mensal ultrapassada ({formatPercent(row.pct)}).</div>
               ) : row.pct >= 80 ? (
                 <div className="buyer-month-warning">Atenção: acima de 80% da dotação mensal.</div>
               ) : null}

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { LockKeyhole, ShieldAlert, Upload } from "lucide-react";
@@ -88,6 +88,7 @@ function useBuyerContext(password: string) {
 }
 
 function BuyerImportArea({ password }: { password: string }) {
+  const queryClient = useQueryClient();
   const context = useBuyerContext(password);
   const importMutation = useMutation({ mutationFn: importBuyerPayments });
   const [summary, setSummary] = useState<{ count: number; ignored: number; total: number } | null>(null);
@@ -142,13 +143,16 @@ function BuyerImportArea({ password }: { password: string }) {
         importMutation.mutate(
           { data: { password, fileName: file.name, entries } },
           {
-            onSuccess: () => {
+            onSuccess: async () => {
               setSummary({
                 count: entries.length,
                 ignored,
                 total: entries.reduce((sum, entry) => sum + entry.amountCents, 0) / 100,
               });
-              context.refetch();
+              await Promise.all([
+                context.refetch(),
+                queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] }),
+              ]);
               toast.success(`${entries.length} pagamento(s) importado(s) por comprador.`);
               if (ignored) toast.warning(`${ignored} linha(s) ignorada(s) por data inválida.`);
             },
