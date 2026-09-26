@@ -115,7 +115,9 @@ function HomePage() {
 
   const octoberBudgetExceededCents = useMemo(() => {
     const groups = new Map<string, number>();
-    activeEntries.forEach((entry) => groups.set(entry.date, (groups.get(entry.date) || 0) + Math.round(Number(entry.debit || 0) * 100));
+    activeEntries.forEach((entry) =>
+      groups.set(entry.date, (groups.get(entry.date) || 0) + Math.round(Number(entry.debit || 0) * 100)),
+    );
     return getOctoberBudgetExceededCents(groups);
   }, [activeEntries]);
   const octoberBudgetBlocked = octoberBudgetExceededCents > 0;
