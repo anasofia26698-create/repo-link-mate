@@ -3,7 +3,6 @@ import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-
 import {
   calculateConsumption,
   calculatePurchaseBudget,
-  consumptionStatus,
   isPurchaseAccessGranted,
 } from "@/lib/purchaseRules";
 import { toast } from "sonner";
@@ -254,57 +253,6 @@ export function PurchasesDashboardTab() {
           <strong>{totals.budget > 0 ? (totals.bought / totals.budget * 100).toFixed(1) : "0,0"}%</strong>
         </div>
       </div>
-      <section className="card purchase-dashboard-card">
-        <div className="card-heading">
-          <div>
-            <h2>Dotação por setor</h2>
-            <p>CMV orçado = venda prevista × CMV alvo. Dotação = CMV + variação de estoque.</p>
-          </div>
-          <BarChart3 size={21} />
-        </div>
-        <div className="sector-list">
-          {rows.map((row) => (
-            <div className="sector-row" key={row.sector}>
-              <div className="sector-row-title">
-                <strong>{row.sector}</strong>
-                <span>
-                  {consumptionStatus(row.consumption) === "danger"
-                    ? "Acima da dotação"
-                    : consumptionStatus(row.consumption) === "warning"
-                      ? "Atenção"
-                      : "Dentro do planejado"}
-                </span>
-              </div>
-              <div className="sector-metrics">
-                <span>
-                  Dotação <b>{money(row.budget)}</b>
-                </span>
-                <span>
-                  Comprado <b>{money(row.bought)}</b>
-                </span>
-                <span>
-                  Saldo <b className={row.balance < 0 ? "red-text" : "green-text"}>{money(row.balance)}</b>
-                </span>
-                <span>
-                  Consumo <b>{row.consumption.toFixed(1)}%</b>
-                </span>
-              </div>
-              <div className="progress-track">
-                <div
-                  className={
-                    consumptionStatus(row.consumption) === "danger"
-                      ? "progress-fill progress-danger"
-                      : consumptionStatus(row.consumption) === "warning"
-                        ? "progress-fill progress-warning"
-                        : "progress-fill"
-                  }
-                  style={{ width: `${Math.min(100, row.consumption)}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
       <BuyerMonthlyPanel />
     </PasswordGate>
   );
