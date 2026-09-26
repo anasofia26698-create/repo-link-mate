@@ -72,7 +72,8 @@ export function getAutomaticRecoveryForDate(date: string, debitByDateCents: Read
     }
   }
   if (!totalExceededCents || !monthlyGoalCents || !lastExceededDate || date <= lastExceededDate || getPurchaseLimitForDate(date).isCritical) {
-    return { limit: getPurchaseLimitForDate(date).limit, applied: false, pct: 0, totalExceededCents, lastExceededDate };
+    const result: DailyRecovery = { limit: getPurchaseLimitForDate(date).limit, applied: false, pct: 0, totalExceededCents };
+    return lastExceededDate ? { ...result, lastExceededDate } : result;
   }
   const pct = totalExceededCents / monthlyGoalCents;
   const baseLimit = getPurchaseLimitForDate(date).limit;
