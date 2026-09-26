@@ -74,6 +74,8 @@ export function AuditTab() {
   const [editingName, setEditingName] = useState("");
   const [newIp, setNewIp] = useState("");
   const [newName, setNewName] = useState("");
+  const [increaseThreshold, setIncreaseThreshold] = useState("5000");
+  const thresholdValue = Number(increaseThreshold.replace(",", "."));
 
   const audit = useQuery({
     queryKey: ["audit-events"],
@@ -83,8 +85,8 @@ export function AuditTab() {
     refetchIntervalInBackground: true,
   });
   const comparison = useQuery({
-    queryKey: ["audit-import-comparison"],
-    queryFn: () => getImportComparison({ data: { password: AUDIT_PASSWORD } }),
+    queryKey: ["audit-import-comparison", increaseThreshold],
+    queryFn: () => getImportComparison({ data: { password: AUDIT_PASSWORD, thresholdCents: Math.round((Number.isFinite(thresholdValue) ? Math.max(0, thresholdValue) : 5000) * 100) } }),
     enabled: unlocked,
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
@@ -262,8 +264,9 @@ export function AuditTab() {
         </div>
       </div>
       <section className="card audit-increases-card">
-        <div className="card-heading"><div><h2>Maiores aumentos versus média histórica</h2><p>Aumentos acima de R$ 5.000,00. Datas passadas são removidas automaticamente; datas futuras permanecem.</p></div><FileSpreadsheet size={21} /></div>
-        {comparison.isLoading ? <div className="empty">Carregando aumentos...</div> : (comparison.data?.increases.length ?? 0) ? <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Data</th><th>Valor a pagar — importação anterior ({importDateLabel(comparison.data?.runs[2]?.createdAt)})</th><th>Valor a pagar — importação do dia ({importDateLabel(comparison.data?.runs[1]?.createdAt)})</th><th>Aumento de entrada ({importDateLabel(comparison.data?.runs[2]?.createdAt)} → {importDateLabel(comparison.data?.runs[1]?.createdAt)})</th><th>Valor a pagar — importação seguinte ({importDateLabel(comparison.data?.runs[0]?.createdAt)})</th><th>Aumento de entrada ({importDateLabel(comparison.data?.runs[1]?.createdAt)} → {importDateLabel(comparison.data?.runs[0]?.createdAt)})</th></tr></thead><tbody>{comparison.data?.increases.map((row) => <tr key={row.date}><td><strong>{dateBR(row.date)}</strong></td><td>{money(row.previousDebitCents / 100)}</td><td>{money(row.currentDebitCents / 100)}</td><td className="red-text"><strong>{row.currentIncreaseCents > 500000 ? money(row.currentIncreaseCents / 100) : "—"}</strong></td><td>{money(row.nextDebitCents / 100)}</td><td className="red-text"><strong>{row.nextIncreaseCents > 500000 ? money(row.nextIncreaseCents / 100) : "—"}</strong></td></tr>)}</tbody></table></div> : <div className="empty">Nenhum aumento acima de R$ 5.000,00 encontrado.</div>}
+        <div className="card-heading"><div><h2>Maiores aumentos versus média histórica</h2><p>Comparação entre a importação anterior e a importação do dia. Datas passadas são removidas; o histórico permanece armazenado.</p></div><FileSpreadsheet size={21} /></div>
+        <label className="audit-threshold">Corte mínimo (R$)<input type="number" min="0" step="0.01" value={increaseThreshold} onChange={(event) => setIncreaseThreshold(event.target.value)} /></label>
+        {comparison.isLoading ? <div className="empty">Carregando aumentos...</div> : (comparison.data?.increases.length ?? 0) ? <><div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Data de vencimento</th><th>Valor a pagar — importação anterior ({importDateLabel(comparison.data?.runs[1]?.createdAt)})</th><th>Valor a pagar — importação do dia ({importDateLabel(comparison.data?.runs[0]?.createdAt)})</th><th>Entrada nova no fluxo (R$)</th><th>% de aumento</th></tr></thead><tbody>{comparison.data?.increases.map((row) => <tr key={row.date}><td><strong>{dateBR(row.date)}</strong><details><summary>{row.history.length} registros</summary><small>{row.history.map((point) => `${importDateLabel(point.importedAt)}: ${money(point.valueCents / 100)}`).join(" · ")}</small></details></td><td>{money(row.previousDebitCents / 100)}</td><td>{money(row.currentDebitCents / 100)}</td><td className="red-text"><strong>{money(row.increaseCents / 100)}</strong></td><td className="red-text"><strong>{row.previousDebitCents > 0 ? `+${(row.increasePct * 100).toFixed(2).replace(".", ",")}%` : "novo"}</strong></td></tr>)}</tbody></table></div><p className="audit-import-summary">Importação comparada: {comparison.data?.runs[0] ? new Date(comparison.data.runs[0].createdAt).toLocaleString("pt-BR") : "—"} · {comparison.data?.increases.length} datas acima do corte · total de entradas novas: {money(comparison.data?.increases.reduce((total, row) => total + row.increaseCents, 0) / 100)}</p></> : <div className="empty">Nenhum aumento acima do corte encontrado.</div>}
       </section>
       <section className="card known-users-card">
         <div className="card-heading">

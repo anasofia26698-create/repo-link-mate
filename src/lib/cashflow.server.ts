@@ -138,10 +138,18 @@ export async function replaceImportedEntries(input: {
       pct: summary!.pct,
       fromDate: summary!.lastExceededDate,
     }));
-  if (automaticRecovery.length) {
+  const previousByDate = new Map<string, number>();
+  for (const entry of existingImported ?? []) previousByDate.set(entry.date as string, (previousByDate.get(entry.date as string) ?? 0) + Number(entry.debit_cents));
+  const comparisonSummary = input.entries.reduce((rows, entry) => {
+    const previousCents = previousByDate.get(entry.date) ?? 0;
+    const increaseCents = entry.debitCents - previousCents;
+    if (increaseCents > 500000) rows.push({ date: entry.date, previousCents, currentCents: entry.debitCents, increaseCents });
+    return rows;
+  }, [] as { date: string; previousCents: number; currentCents: number; increaseCents: number }[]);
+  if (automaticRecovery.length || comparisonSummary.length) {
     const { error: recoveryAuditError } = await supabaseAdmin
       .from("audit_events")
-      .update({ details: JSON.stringify({ ...(input.importMeta ?? {}), automaticRecovery }) })
+      .update({ details: JSON.stringify({ ...(input.importMeta ?? {}), automaticRecovery, comparisonSummary }) })
       .eq("id", auditEventId);
     if (recoveryAuditError) throw new Error(recoveryAuditError.message);
   }
@@ -305,9 +313,9 @@ export type ImportIncreaseRow = {
   date: string;
   previousDebitCents: number;
   currentDebitCents: number;
-  currentIncreaseCents: number;
-  nextDebitCents: number;
-  nextIncreaseCents: number;
+  increaseCents: number;
+  increasePct: number;
+  history: { importedAt: string; valueCents: number }[];
 };
 
 export type ImportMonthlyBudget = {
@@ -340,7 +348,7 @@ export type ImportComparison = {
 const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
 
 /** Lê todo o histórico permanente e calcula os aumentos entre importações consecutivas. */
-export async function importComparison(): Promise<ImportComparison> {
+export async function importComparison(thresholdCents = 500000): Promise<ImportComparison> {
   const { data, error } = await supabaseAdmin
     .from("cash_flow_import_runs")
     .select("id,file_name,entry_count,period_start,period_end,total_debit_cents,created_at")
@@ -409,9 +417,8 @@ export async function importComparison(): Promise<ImportComparison> {
       automaticRecovery: [],
     };
   }
-  const current = runs[1] ?? latest;
-  const previous = runs[2];
-  const nextValues = byRun.get(latest.id) ?? new Map();
+  const current = latest;
+  const previous = runs[1];
   const currentValues = byRun.get(current.id) ?? new Map();
   const previousValues = previous ? byRun.get(previous.id) ?? new Map() : new Map();
   const { data: currentFlowRows, error: currentFlowError } = await supabaseAdmin
@@ -442,22 +449,26 @@ export async function importComparison(): Promise<ImportComparison> {
       pct: summary!.pct,
       lastExceededDate: summary!.lastExceededDate!,
     }));
-  const threshold = 5000 * 100;
+  const threshold = thresholdCents;
   const increases = Array.from(dates)
     .map((date) => {
       const previousDebitCents = previousValues.get(date) ?? 0;
       const currentDebitCents = currentValues.get(date) ?? 0;
-      const nextDebitCents = nextValues.get(date) ?? 0;
+      const increaseCents = currentDebitCents - previousDebitCents;
+      const history = runs
+        .slice()
+        .reverse()
+        .map((run) => ({ importedAt: run.createdAt, valueCents: byRun.get(run.id)?.get(date) ?? 0 }));
       return {
         date,
         previousDebitCents,
         currentDebitCents,
-        currentIncreaseCents: currentDebitCents - previousDebitCents,
-        nextDebitCents,
-        nextIncreaseCents: nextDebitCents - currentDebitCents,
+        increaseCents,
+        increasePct: previousDebitCents > 0 ? increaseCents / previousDebitCents : 0,
+        history,
       };
     })
-    .filter((row) => row.currentIncreaseCents > threshold || row.nextIncreaseCents > threshold)
+    .filter((row) => row.increaseCents > threshold)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const monthlyBudgets = budgetMonths.map((month) => {

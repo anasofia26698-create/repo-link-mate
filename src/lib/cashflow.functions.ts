@@ -128,14 +128,14 @@ export const listAuditEvents = createServerFn({ method: "POST" })
   });
 
 export const getImportComparison = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ password: z.string() }).parse(data))
+  .inputValidator((data: unknown) => z.object({ password: z.string(), thresholdCents: z.number().int().min(0).max(100_000_000).default(500000) }).parse(data))
   .handler(async ({ data }) => {
     const { isPurchaseAccessGranted } = await import("./purchaseRules");
     if (!isPurchaseAccessGranted(data.password)) {
       throw new Error("Senha incorreta.");
     }
     const { importComparison } = await import("./cashflow.server");
-    return importComparison();
+    return importComparison(data.thresholdCents);
   });
 
 function requireAuditPassword(password: string) {
