@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { AlertTriangle, Menu, X } from "lucide-react";
@@ -69,6 +69,7 @@ function nextCriticalDate(day: number, from: string) {
 }
 
 function HomePage() {
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("fluxo");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [today, setToday] = useState(iso(new Date()));
@@ -303,9 +304,10 @@ function HomePage() {
             },
           },
           {
-            onSuccess: (shared) => {
+            onSuccess: async (shared) => {
               setEntries(shared.map(toEntry));
               setImportSummary({ count: imported.length, start: dates[0]!, end: dates[dates.length - 1]!, total: totalDebitCents / 100 });
+              await queryClient.invalidateQueries({ queryKey: ["cash-flow-entries"] });
               toast.success(`${imported.length} lançamentos importados e compartilhados. A planilha agora é a fonte central do fluxo.`);
             },
             onError: () => toast.error("Não foi possível atualizar o fluxo compartilhado."),
