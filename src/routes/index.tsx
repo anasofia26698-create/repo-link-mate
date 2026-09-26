@@ -8,6 +8,7 @@ import { isTemporaryEntryActive } from "@/lib/flowRules";
 import {
   calculateDaysFromReference,
   getAutomaticRecoveryForDate,
+  getOctoberBudgetExceededCents,
   getPurchaseLimitForDate,
   isFrozenFlowDate,
   parsePaymentDates,
@@ -112,6 +113,13 @@ function HomePage() {
 
   const activeEntries = useMemo(() => entries.filter((entry) => isTemporaryEntryActive(entry, Date.now())), [entries]);
 
+  const octoberBudgetExceededCents = useMemo(() => {
+    const groups = new Map<string, number>();
+    activeEntries.forEach((entry) => groups.set(entry.date, (groups.get(entry.date) || 0) + Math.round(Number(entry.debit || 0) * 100));
+    return getOctoberBudgetExceededCents(groups);
+  }, [activeEntries]);
+  const octoberBudgetBlocked = octoberBudgetExceededCents > 0;
+
   const grouped = useMemo(() => {
     const groups = new Map<string, number>();
     activeEntries.forEach((entry) => groups.set(entry.date, (groups.get(entry.date) || 0) + Number(entry.debit || 0)));
@@ -121,7 +129,9 @@ function HomePage() {
       .map(([date, debit]) => {
         const recovery = getAutomaticRecoveryForDate(date, debitByDateCents);
         const target = getTightenedFlowLimit(date, debit, octoberTighteningFactor);
-        const effectiveTarget = date >= "2026-11-01" && recovery.applied ? { ...target, limit: recovery.limit } : target;
+        const effectiveTarget = octoberBudgetBlocked && date.startsWith("2026-10")
+          ? { ...target, limit: debit }
+          : date >= "2026-11-01" && recovery.applied ? { ...target, limit: recovery.limit } : target;
         return {
           date,
           debit,
@@ -131,10 +141,12 @@ function HomePage() {
           weekday: effectiveTarget.weekday,
           isCritical: effectiveTarget.isCritical,
           isFrozen: effectiveTarget.isFrozen,
+          budgetBlocked: octoberBudgetBlocked && date.startsWith("2026-10"),
+          budgetExceededCents: octoberBudgetExceededCents,
           recovery,
         };
       });
-  }, [activeEntries, octoberTighteningFactor]);
+  }, [activeEntries, octoberTighteningFactor, octoberBudgetBlocked, octoberBudgetExceededCents]);
 
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
@@ -155,11 +167,14 @@ function HomePage() {
       const debitByDateCents = new Map(grouped.map((row) => [row.date, Math.round(row.debit * 100)]));
       const recovery = getAutomaticRecoveryForDate(date, debitByDateCents);
       const target = getTightenedFlowLimit(date, existing, octoberTighteningFactor);
-      const effectiveTarget = date >= "2026-11-01" && recovery.applied ? { ...target, limit: recovery.limit } : target;
-      const canBuy = !isFrozenFlowDate(date) && existing + installment <= effectiveTarget.limit;
-      return { term, date, existing, installment, limit: effectiveTarget.limit, weekday: effectiveTarget.weekday, isCritical: effectiveTarget.isCritical, isFrozen: effectiveTarget.isFrozen, canBuy };
+      const budgetBlocked = octoberBudgetBlocked && date.startsWith("2026-10");
+      const effectiveTarget = budgetBlocked
+        ? { ...target, limit: existing }
+        : date >= "2026-11-01" && recovery.applied ? { ...target, limit: recovery.limit } : target;
+      const canBuy = !isFrozenFlowDate(date) && !budgetBlocked && existing + installment <= effectiveTarget.limit;
+      return { term, date, existing, installment, limit: effectiveTarget.limit, weekday: effectiveTarget.weekday, isCritical: effectiveTarget.isCritical, isFrozen: effectiveTarget.isFrozen, budgetBlocked, canBuy };
     });
-  }, [simulationMode, paymentDates, terms, purchase, today, grouped, octoberTighteningFactor]);
+  }, [simulationMode, paymentDates, terms, purchase, today, grouped, octoberTighteningFactor, octoberBudgetBlocked]);
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
@@ -502,8 +517,10 @@ function HomePage() {
                     const date = nextCriticalDate(item.day, today);
                     const flow = grouped.find((row) => row.date === date);
                     const target = getTightenedFlowLimit(date, flow?.debit ?? 0, octoberTighteningFactor);
+                    const budgetBlocked = octoberBudgetBlocked && date.startsWith("2026-10");
+                    const effectiveTarget = budgetBlocked ? { ...target, limit: flow?.debit ?? 0 } : target;
                     const frozen = isFrozenFlowDate(date);
-                    const exceeded = !frozen && flow ? flow.debit > target.limit : false;
+                    const exceeded = !frozen && !budgetBlocked && flow ? flow.debit > effectiveTarget.limit : false;
                     return (
                       <div className={"critical-item " + (exceeded ? "critical-risk" : "")} key={item.day}>
                         <div className="critical-event">
@@ -515,12 +532,12 @@ function HomePage() {
                         <div className="critical-date">
                           <strong>{dayMonthBR(date)}</strong>
                           <span>
-                            {target.weekday} · limite de {money(target.limit)}
+                            {effectiveTarget.weekday} · limite de {money(effectiveTarget.limit)}
                           </span>
                         </div>
                         <div className="critical-amount">
                           <b className={exceeded ? "red-text" : "green-text"}>{money(flow?.debit ?? 0)}</b>
-                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : flow ? (exceeded ? "limite ultrapassado" : `${money(target.limit - flow.debit)} livres`) : "sem débitos"}</small>
+                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : budgetBlocked ? `BLOQUEADO — Orçamento do mês ultrapassado em ${money(octoberBudgetExceededCents / 100)}` : flow ? (exceeded ? "limite ultrapassado" : `${money(effectiveTarget.limit - flow.debit)} livres`) : "sem débitos"}</small>
                         </div>
                       </div>
                     );
@@ -549,7 +566,7 @@ function HomePage() {
                       </div>
                       <div className="timeline-value">
                         <strong className={row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</strong>
-                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : row.exceeded ? "Limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
+                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : row.budgetBlocked ? `BLOQUEADO — Orçamento do mês ultrapassado em ${money(row.budgetExceededCents / 100)}` : row.exceeded ? "Limite ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
                       </div>
                     </div>
                   ))}

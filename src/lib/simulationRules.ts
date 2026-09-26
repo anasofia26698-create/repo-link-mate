@@ -11,6 +11,13 @@ export const FROZEN_FLOW_START_DATE = "2026-09-01";
 export const FROZEN_FLOW_END_DATE = "2026-09-30";
 export const OCTOBER_TIGHTENING_FACTOR = 0.1184;
 export const OCTOBER_TIGHTENING_THRESHOLD = 10000;
+export const OCTOBER_BASE_BUDGET_CENTS = 198260300;
+
+export function getOctoberBudgetExceededCents(debitByDateCents: ReadonlyMap<string, number>): number {
+  const totalDebitCents = Array.from(debitByDateCents.entries())
+    .reduce((total, [date, debitCents]) => total + (date.startsWith("2026-10") ? debitCents : 0), 0);
+  return Math.max(0, totalDebitCents - OCTOBER_BASE_BUDGET_CENTS);
+}
 
 export function isFrozenFlowDate(date: string): boolean {
   return date >= FROZEN_FLOW_START_DATE && date <= FROZEN_FLOW_END_DATE;

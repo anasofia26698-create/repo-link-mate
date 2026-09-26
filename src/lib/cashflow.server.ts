@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
 import { isCriticalDate } from "./buyerRules";
-import { getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
+import { getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
   id: number;
   date: string;
@@ -326,6 +326,8 @@ export type ImportMonthlyBudget = {
   exceededCents: number;
   hasImport: boolean;
   blocked: boolean;
+  budgetBlocked: boolean;
+  budgetExceededCents: number;
 };
 
 export type ImportComparison = {
@@ -374,7 +376,7 @@ export async function importComparison(thresholdCents = 500000): Promise<ImportC
     "2027-01": 196558400,
     "2027-02": 175261300,
   };
-  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: month === "2026-09" }));
+  const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: month === "2026-09", budgetBlocked: false, budgetExceededCents: 0 }));
   if (!runs.length) {
     return {
       runs,
@@ -486,18 +488,24 @@ export async function importComparison(thresholdCents = 500000): Promise<ImportC
       const debitCents = currentFlowValues.get(date) ?? 0;
       if (month === "2026-09") continue;
       const recovery = getAutomaticRecoveryForDate(date, currentFlowValues);
-      const goalCents = date.startsWith("2026-10") && !isCriticalDate(date) && debitCents <= originalGoalCents
+      const octoberOverBudget = month === "2026-10" && totalDebitCents > OCTOBER_BASE_BUDGET_CENTS;
+      const regularGoalCents = date.startsWith("2026-10") && !isCriticalDate(date) && debitCents <= originalGoalCents
         ? debitCents + (originalGoalCents - debitCents <= OCTOBER_TIGHTENING_THRESHOLD * 100
           ? 0
           : Math.round((originalGoalCents - debitCents) * OCTOBER_TIGHTENING_FACTOR))
         : date >= "2026-11-01" && recovery.applied
           ? Math.round(recovery.limit * 100)
-        : originalGoalCents;
-      if (debitCents < goalCents) availableCents += goalCents - debitCents;
-      if (debitCents > goalCents) exceededCents += debitCents - goalCents;
+          : originalGoalCents;
+      if (octoberOverBudget) {
+        if (debitCents > regularGoalCents) exceededCents += debitCents - regularGoalCents;
+        continue;
+      }
+      if (debitCents < regularGoalCents) availableCents += regularGoalCents - debitCents;
+      if (debitCents > regularGoalCents) exceededCents += debitCents - regularGoalCents;
     }
     const hasImport = Array.from(currentFlowValues.keys()).some((date) => date.startsWith(month));
-    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: month === "2026-09" };
+    const budgetBlocked = month === "2026-10" && totalDebitCents > OCTOBER_BASE_BUDGET_CENTS;
+    return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: month === "2026-09", budgetBlocked, budgetExceededCents: budgetBlocked ? totalDebitCents - budgetCents : 0 };
   });
   return { runs, increases, monthlyTotals, periodTotalCents, monthlyBudgets, automaticRecovery };
 }
