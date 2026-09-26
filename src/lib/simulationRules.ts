@@ -46,38 +46,42 @@ export type DailyRecovery = {
   applied: boolean;
   pct: number;
   totalExceededCents: number;
-  lastExceededDate?: string;
+  budgetCents: number;
 };
 
-/** Calcula a meta efetiva de um dia sem alterar setembro/outubro. */
+/** A partir de novembro, reduz a folga de todos os dias livres do mês. */
 export function getAutomaticRecoveryForDate(date: string, debitByDateCents: ReadonlyMap<string, number>): DailyRecovery {
+  const baseLimit = getPurchaseLimitForDate(date).limit;
   if (date < "2026-11-01") {
-    return { limit: getPurchaseLimitForDate(date).limit, applied: false, pct: 0, totalExceededCents: 0 };
+    return { limit: baseLimit, applied: false, pct: 0, totalExceededCents: 0, budgetCents: 0 };
   }
   const [yearText, monthText] = date.split("-");
   const year = Number(yearText);
   const month = Number(monthText);
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  let monthlyGoalCents = 0;
+  let budgetCents = 0;
   let totalExceededCents = 0;
-  let lastExceededDate: string | undefined;
   for (let day = 1; day <= daysInMonth; day += 1) {
     const currentDate = `${yearText}-${monthText}-${String(day).padStart(2, "0")}`;
-    const baseGoalCents = Math.round(getPurchaseLimitForDate(currentDate).limit * 100);
-    monthlyGoalCents += baseGoalCents;
+    const dailyGoalCents = Math.round(getPurchaseLimitForDate(currentDate).limit * 100);
+    budgetCents += dailyGoalCents;
     const debitCents = debitByDateCents.get(currentDate) ?? 0;
-    if (debitCents > baseGoalCents) {
-      totalExceededCents += debitCents - baseGoalCents;
-      lastExceededDate = currentDate;
-    }
+    if (debitCents > dailyGoalCents) totalExceededCents += debitCents - dailyGoalCents;
   }
-  if (!totalExceededCents || !monthlyGoalCents || !lastExceededDate || date <= lastExceededDate || getPurchaseLimitForDate(date).isCritical) {
-    const result: DailyRecovery = { limit: getPurchaseLimitForDate(date).limit, applied: false, pct: 0, totalExceededCents };
-    return lastExceededDate ? { ...result, lastExceededDate } : result;
+  if (!totalExceededCents || !budgetCents) {
+    return { limit: baseLimit, applied: false, pct: 0, totalExceededCents, budgetCents };
   }
-  const pct = totalExceededCents / monthlyGoalCents;
-  const baseLimit = getPurchaseLimitForDate(date).limit;
-  return { limit: Math.max(0, baseLimit * (1 - pct)), applied: true, pct, totalExceededCents, lastExceededDate };
+  const pct = totalExceededCents / budgetCents;
+  const parsed = new Date(`${date}T12:00:00`);
+  const isCritical = CRITICAL_PAYMENT_DAYS.includes(parsed.getDate() as typeof CRITICAL_PAYMENT_DAYS[number]);
+  const debitCents = debitByDateCents.get(date) ?? 0;
+  const baseLimitCents = Math.round(baseLimit * 100);
+  if (isCritical || debitCents >= baseLimitCents) {
+    return { limit: baseLimit, applied: false, pct, totalExceededCents, budgetCents };
+  }
+  const originalFreeCents = Math.max(0, baseLimitCents - debitCents);
+  const reducedFreeCents = Math.max(0, Math.round(originalFreeCents * (1 - pct)));
+  return { limit: (debitCents + reducedFreeCents) / 100, applied: true, pct, totalExceededCents, budgetCents };
 }
 
 export function getAutomaticRecoverySummary(month: string, debitByDateCents: ReadonlyMap<string, number>) {
@@ -85,13 +89,12 @@ export function getAutomaticRecoverySummary(month: string, debitByDateCents: Rea
   const year = Number(yearText);
   const monthNumber = Number(monthText);
   const daysInMonth = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
-  let last: DailyRecovery | undefined;
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = `${yearText}-${monthText}-${String(day).padStart(2, "0")}`;
     const result = getAutomaticRecoveryForDate(date, debitByDateCents);
-    if (result.totalExceededCents > 0) last = result;
+    if (result.totalExceededCents > 0) return result;
   }
-  return last && last.lastExceededDate ? last : null;
+  return null;
 }
 
 export function parsePaymentDates(value: string): PaymentDate[] {

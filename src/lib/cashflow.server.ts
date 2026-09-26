@@ -136,7 +136,7 @@ export async function replaceImportedEntries(input: {
       month,
       exceededCents: summary!.totalExceededCents,
       pct: summary!.pct,
-      fromDate: summary!.lastExceededDate,
+      budgetCents: summary!.budgetCents,
     }));
   const previousByDate = new Map<string, number>();
   for (const entry of existingImported ?? []) previousByDate.set(entry.date as string, (previousByDate.get(entry.date as string) ?? 0) + Number(entry.debit_cents));
@@ -341,7 +341,7 @@ export type ImportComparison = {
     month: string;
     totalExceededCents: number;
     pct: number;
-    lastExceededDate: string;
+    budgetCents: number;
   }[];
 };
 
@@ -447,7 +447,7 @@ export async function importComparison(thresholdCents = 500000): Promise<ImportC
       month,
       totalExceededCents: summary!.totalExceededCents,
       pct: summary!.pct,
-      lastExceededDate: summary!.lastExceededDate!,
+      budgetCents: summary!.budgetCents,
     }));
   const threshold = thresholdCents;
   const increases = Array.from(dates)
