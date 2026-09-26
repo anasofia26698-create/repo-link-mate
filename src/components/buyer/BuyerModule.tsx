@@ -19,9 +19,9 @@ import {
   saveBuyerIpAddress,
 } from "@/lib/buyer.functions";
 import { dateBR, iso, money, parseBRL, parseTerms } from "@/components/cashflow/format";
-import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
+import { GoalsTab } from "@/components/cashflow/PurchaseGoals";
 
-type BuyerArea = "dashboard" | "metas" | "fluxo" | "importar";
+type BuyerArea = "metas" | "fluxo" | "importar";
 
 function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (password: string) => void }) {
   const [password, setPassword] = useState("");
@@ -29,7 +29,7 @@ function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (pas
     <section className="card access-card">
       <LockKeyhole size={28} />
       <h2>Área protegida</h2>
-      <p>Informe a senha para acessar {area === "dashboard" ? "o Dashboard de Compras" : area === "metas" ? "o Cadastro de Metas" : area === "fluxo" ? "o Fluxo de Caixa por comprador" : "a Importação de Planilha"}.</p>
+      <p>Informe a senha para acessar {area === "metas" ? "o Cadastro de Metas" : area === "fluxo" ? "o Fluxo de Caixa por comprador" : "a Importação de Planilha"}.</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -48,7 +48,7 @@ function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (pas
 }
 
 export function BuyerModule() {
-  const [area, setArea] = useState<BuyerArea>("dashboard");
+  const [area, setArea] = useState<BuyerArea>("metas");
   const [password, setPassword] = useState("");
 
   const changeArea = (next: BuyerArea) => {
@@ -66,9 +66,6 @@ export function BuyerModule() {
         </div>
       </div>
       <div className="buyer-subnav">
-        <button className={area === "dashboard" ? "active" : ""} onClick={() => changeArea("dashboard")}>
-          Dashboard de Compras
-        </button>
         <button className={area === "metas" ? "active" : ""} onClick={() => changeArea("metas")}>
           Cadastro de Metas
         </button>
@@ -81,8 +78,6 @@ export function BuyerModule() {
       </div>
       {!password ? (
         <BuyerPasswordGate area={area} onUnlock={setPassword} />
-      ) : area === "dashboard" ? (
-        <PurchasesDashboardTab requireBuyerAccess={false} />
       ) : area === "metas" ? (
         <GoalsTab requireBuyerAccess={false} />
       ) : area === "fluxo" ? (
