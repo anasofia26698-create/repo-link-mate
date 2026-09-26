@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
@@ -6,22 +6,18 @@ import { LockKeyhole, ShieldAlert, Upload } from "lucide-react";
 import {
   BUYERS,
   BUYER_BUSINESS_RULES,
-  dailyGoal,
   isBuyerModuleAccessGranted,
   matchBuyer,
   type Buyer,
 } from "@/lib/buyerRules";
 import {
-  confirmBuyerPurchases,
-  deleteBuyerIpAddress,
   getBuyerContext,
   importBuyerPayments,
-  saveBuyerIpAddress,
 } from "@/lib/buyer.functions";
-import { dateBR, iso, money, parseBRL, parseTerms } from "@/components/cashflow/format";
+import { iso, money, parseBRL } from "@/components/cashflow/format";
 import { GoalsTab } from "@/components/cashflow/PurchaseGoals";
 
-type BuyerArea = "metas" | "fluxo" | "importar";
+type BuyerArea = "metas" | "importar";
 
 function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (password: string) => void }) {
   const [password, setPassword] = useState("");
@@ -29,7 +25,7 @@ function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (pas
     <section className="card access-card">
       <LockKeyhole size={28} />
       <h2>Área protegida</h2>
-      <p>Informe a senha para acessar {area === "metas" ? "o Cadastro de Metas" : area === "fluxo" ? "o Fluxo de Caixa por comprador" : "a Importação de Planilha"}.</p>
+      <p>Informe a senha para acessar {area === "metas" ? "o Cadastro de Metas" : "a Importação de Planilha"}.</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -69,9 +65,6 @@ export function BuyerModule() {
         <button className={area === "metas" ? "active" : ""} onClick={() => changeArea("metas")}>
           Cadastro de Metas
         </button>
-        <button className={area === "fluxo" ? "active" : ""} onClick={() => changeArea("fluxo")}>
-          Fluxo de Caixa
-        </button>
         <button className={area === "importar" ? "active" : ""} onClick={() => changeArea("importar")}>
           Importação Planilha
         </button>
@@ -80,8 +73,6 @@ export function BuyerModule() {
         <BuyerPasswordGate area={area} onUnlock={setPassword} />
       ) : area === "metas" ? (
         <GoalsTab requireBuyerAccess={false} />
-      ) : area === "fluxo" ? (
-        <BuyerFlowArea password={password} />
       ) : (
         <BuyerImportArea password={password} />
       )}
@@ -94,358 +85,6 @@ function useBuyerContext(password: string) {
     queryKey: ["buyer-context", password],
     queryFn: () => getBuyerContext({ data: { password } }),
   });
-}
-
-function BuyerFlowArea({ password }: { password: string }) {
-  const context = useBuyerContext(password);
-  const [today, setToday] = useState(iso(new Date()));
-  const [purchaseInput, setPurchaseInput] = useState("48.000,00");
-  const [termsInput, setTermsInput] = useState("30, 60, 90");
-  const [manualBuyer, setManualBuyer] = useState<Buyer | "">("");
-  const [newIpBuyer, setNewIpBuyer] = useState<Buyer>(BUYERS[0]);
-  const [simulated, setSimulated] = useState(false);
-
-  const ips = context.data?.ips ?? [];
-  const detected = (context.data?.buyer ?? null) as Buyer | null;
-  const ipAddress = context.data?.ipAddress ?? null;
-  const buyer: Buyer | null = manualBuyer || detected;
-
-  const saveIp = useMutation({ mutationFn: saveBuyerIpAddress });
-  const removeIp = useMutation({ mutationFn: deleteBuyerIpAddress });
-  const confirmPurchase = useMutation({ mutationFn: confirmBuyerPurchases });
-
-  const period = today.slice(0, 7);
-  const monthlyBudget = useMemo(() => {
-    const found = (context.data?.budgets ?? []).find((item) => item.period === period && item.buyer === buyer);
-    const fallback = (context.data?.budgets ?? []).find((item) => item.buyer === buyer);
-    return ((found ?? fallback)?.monthlyCents ?? 0) / 100;
-  }, [context.data, period, buyer]);
-
-  const paymentsByDate = useMemo(() => {
-    const map = new Map<string, number>();
-    (context.data?.payments ?? [])
-      .filter((item) => item.buyer === buyer)
-      .forEach((item) => map.set(item.date, (map.get(item.date) ?? 0) + item.amountCents / 100));
-    return map;
-  }, [context.data, buyer]);
-
-  const purchase = parseBRL(purchaseInput);
-  const terms = parseTerms(termsInput);
-
-  const scenarios = useMemo(() => {
-    const list = terms.length ? terms : [30];
-    const installment = purchase / list.length;
-    return list.map((term) => {
-      const date = new Date(`${today}T12:00:00`);
-      date.setDate(date.getDate() + term);
-      const dueDate = iso(date);
-      const goal = dailyGoal(monthlyBudget, dueDate);
-      const existing = paymentsByDate.get(dueDate) ?? 0;
-      return { term, date: dueDate, installment, existing, ...goal, canBuy: existing + installment <= goal.goal };
-    });
-  }, [terms, purchase, today, monthlyBudget, paymentsByDate]);
-
-  const flowRows = useMemo(
-    () =>
-      Array.from(paymentsByDate.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, total]) => ({ date, total, ...dailyGoal(monthlyBudget, date) })),
-    [paymentsByDate, monthlyBudget],
-  );
-
-  if (context.isLoading) return <div className="card empty">Carregando dados do comprador...</div>;
-  if (context.isError) return <div className="card empty">Não foi possível carregar o módulo do comprador.</div>;
-
-  return (
-    <>
-      <section className="card buyer-ident-card">
-        <div className="card-heading">
-          <div>
-            <h2>Identificação do comprador</h2>
-            <p>O IP de origem define o comprador. Use o seletor manual apenas quando o mesmo IP for compartilhado.</p>
-          </div>
-          <ShieldAlert size={20} />
-        </div>
-        <div className="buyer-ident-body">
-          <div className="buyer-ident-line">
-            <span>IP detectado</span>
-            <strong>{ipAddress ?? "não identificado"}</strong>
-          </div>
-          <div className="buyer-ident-line">
-            <span>Comprador do IP</span>
-            <strong className={detected ? "green-text" : "red-text"}>{detected ?? "IP não cadastrado"}</strong>
-          </div>
-          <label>
-            Comprador (seletor manual)
-            <select value={manualBuyer} onChange={(event) => setManualBuyer(event.target.value as Buyer | "")}>
-              <option value="">Usar o comprador do IP</option>
-              {BUYERS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </label>
-          {!detected && (
-            <div className="scenario-alert">
-              <div className="scenario-alert-main">
-                Simulação bloqueada
-                <strong className="red-text">IP não cadastrado</strong>
-              </div>
-              <div className="scenario-alert-support">
-                Cadastre o IP abaixo ou escolha o comprador no seletor manual para liberar a simulação.
-              </div>
-            </div>
-          )}
-          <div className="buyer-ip-form">
-            <input value={ipAddress ?? ""} readOnly placeholder="IP" />
-            <select value={newIpBuyer} onChange={(event) => setNewIpBuyer(event.target.value as Buyer)}>
-              {BUYERS.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-            <button
-              className="btn btn-dark"
-              onClick={() => {
-                if (!ipAddress) {
-                  toast.error("Nenhum IP detectado para cadastrar.");
-                  return;
-                }
-                saveIp.mutate(
-                  { data: { password, ipAddress, buyer: newIpBuyer } },
-                  {
-                    onSuccess: () => {
-                      toast.success("IP cadastrado.");
-                      context.refetch();
-                    },
-                    onError: () => toast.error("Não foi possível cadastrar o IP."),
-                  },
-                );
-              }}
-            >
-              Cadastrar este IP
-            </button>
-          </div>
-          <div className="buyer-ip-list">
-            {ips.map((item) => (
-              <div className="buyer-ip-item" key={item.id}>
-                <span>
-                  <strong>{item.buyer}</strong>
-                  <small>{item.ipAddress}</small>
-                </span>
-                <button
-                  className="btn btn-light"
-                  onClick={() =>
-                    removeIp.mutate(
-                      { data: { password, id: item.id } },
-                      { onSuccess: () => context.refetch(), onError: () => toast.error("Não foi possível remover o IP.") },
-                    )
-                  }
-                >
-                  Remover
-                </button>
-              </div>
-            ))}
-            {!ips.length && <div className="empty">Nenhum IP cadastrado.</div>}
-          </div>
-        </div>
-      </section>
-
-      <div className="sim-layout has-simulation">
-        <aside className="card simulator simulator-large">
-          <div className="card-heading">
-            <div>
-              <h2>Simulador diário</h2>
-              <p>Data prevista = hoje + prazo. A meta usa o peso do dia da semana e o redutor dos dias críticos.</p>
-            </div>
-            <span className="sim-badge">SIMULAR</span>
-          </div>
-          <div className="form-stack">
-            <label>
-              Data de hoje
-              <input type="date" value={today} onChange={(event) => setToday(event.target.value)} />
-            </label>
-            <label>
-              Valor total da compra
-              <input
-                type="text"
-                inputMode="decimal"
-                value={purchaseInput}
-                onChange={(event) => setPurchaseInput(event.target.value)}
-                placeholder="40.000,00"
-              />
-            </label>
-            <label>
-              Prazo da compra em dias
-              <input type="text" value={termsInput} onChange={(event) => setTermsInput(event.target.value)} placeholder="30, 60, 90" />
-            </label>
-            <div className="buyer-ident-line">
-              <span>Dotação do mês ({period})</span>
-              <strong>{money(monthlyBudget)}</strong>
-            </div>
-          </div>
-          <button
-            className="btn btn-primary full"
-            onClick={() => {
-              if (!buyer) {
-                toast.error("IP não cadastrado. Cadastre o IP ou selecione o comprador manualmente.");
-                return;
-              }
-              if (!monthlyBudget) {
-                toast.error("Cadastre a dotação mensal deste comprador na aba Cadastro de Metas.");
-                return;
-              }
-              setSimulated(true);
-            }}
-          >
-            Simular compra
-          </button>
-        </aside>
-        {simulated && buyer && (
-          <section className="card simulation-panel">
-            <div className="card-heading">
-              <div>
-                <h2>Simulação de {buyer}</h2>
-                <p>Cada dia tem teto próprio — folga ou estouro não migram entre dias.</p>
-              </div>
-            </div>
-            <div className="scenario-list">
-              {scenarios.map((scenario) => (
-                <div className={"scenario " + (scenario.canBuy ? "scenario-ok" : "scenario-risk")} key={scenario.term}>
-                  <div className="scenario-title">
-                    <strong>{scenario.canBuy ? "PODE COMPRAR" : "NÃO PODE COMPRAR"}</strong>
-                    <span>{scenario.term} dias</span>
-                  </div>
-                  <div className="scenario-grid">
-                    <div>
-                      <span>Data prevista</span>
-                      <strong>{dateBR(scenario.date)}</strong>
-                    </div>
-                    <div>
-                      <span>Dia da semana</span>
-                      <strong>{scenario.weekday}</strong>
-                    </div>
-                    <div>
-                      <span>Pagamentos do dia</span>
-                      <strong>{money(scenario.existing)}</strong>
-                    </div>
-                    <div>
-                      <span>Valor da parcela</span>
-                      <strong>{money(scenario.installment)}</strong>
-                    </div>
-                    <div>
-                      <span>{scenario.isCritical ? "Meta do dia (crítico 85%)" : "Meta do dia"}</span>
-                      <strong>{money(scenario.goal)}</strong>
-                    </div>
-                    <div>
-                      <span>Peso do dia</span>
-                      <strong>{(scenario.weight * 100).toFixed(2).replace(".", ",")}%</strong>
-                    </div>
-                  </div>
-                  <div className="scenario-alert">
-                    <div className="scenario-alert-main">
-                      {scenario.existing <= scenario.goal ? "Saldo Disponível para compra no dia" : "Valor ultrapassado da meta diária"}
-                      <strong className={scenario.existing <= scenario.goal ? "green-text" : "red-text"}>
-                        {money(Math.abs(scenario.goal - scenario.existing))}
-                      </strong>
-                    </div>
-                    <div className="scenario-alert-support">
-                      {scenario.canBuy
-                        ? "Débitos existentes + parcela ficam dentro do limite."
-                        : "Débitos existentes + parcela ultrapassam o limite."}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="scenario-alert">
-              <div className="scenario-alert-main">Confirmação de compra</div>
-              <div className="scenario-alert-support">
-                Ao confirmar, as parcelas entram no fluxo de caixa de {buyer} e saem automaticamente após 7 dias.
-              </div>
-              <button
-                className="btn btn-primary full"
-                disabled={confirmPurchase.isPending}
-                onClick={() => {
-                  confirmPurchase.mutate(
-                    {
-                      data: {
-                        password,
-                        buyer,
-                        entries: scenarios.map((scenario) => ({
-                          date: scenario.date,
-                          amountCents: Math.round(scenario.installment * 100),
-                        })),
-                      },
-                    },
-                    {
-                      onSuccess: () => {
-                        toast.success("Compra confirmada e incluída no fluxo por 7 dias.");
-                        context.refetch();
-                      },
-                      onError: () => toast.error("Não foi possível confirmar a compra."),
-                    },
-                  );
-                }}
-              >
-                Confirmar compra nessas parcelas
-              </button>
-            </div>
-          </section>
-        )}
-      </div>
-
-      <section className="card timeline-card">
-        <div className="card-heading">
-          <div>
-            <h2>Pagamentos por dia {buyer ? `— ${buyer}` : ""}</h2>
-            <p>Planilha importada + compras confirmadas (válidas por 7 dias), comparadas com a meta do dia.</p>
-          </div>
-        </div>
-        <div className="timeline-list">
-          {flowRows.map((row) => {
-            const exceeded = row.total > row.goal;
-            return (
-              <div className="timeline-row" key={row.date}>
-                <div className="timeline-label">
-                  <strong>{dateBR(row.date)}</strong>
-                  <span>
-                    {row.weekday}
-                    {row.isCritical ? " · dia crítico" : ""}
-                  </span>
-                </div>
-                <div className="timeline-track">
-                  <div
-                    className={"timeline-fill " + (exceeded ? "fill-risk" : "")}
-                    style={{ width: `${row.goal ? Math.min(100, (row.total / row.goal) * 100) : 0}%` }}
-                  />
-                </div>
-                <div className="timeline-value">
-                  <strong className={exceeded ? "red-text" : "green-text"}>{money(row.total)}</strong>
-                  <span>{exceeded ? `${money(row.total - row.goal)} acima da meta` : `${money(row.goal - row.total)} livres`}</span>
-                </div>
-              </div>
-            );
-          })}
-          {!flowRows.length && <div className="empty">Nenhum pagamento importado para este comprador.</div>}
-        </div>
-      </section>
-
-      <section className="card rules-card">
-        <div className="card-heading">
-          <div>
-            <h2>Regras aplicadas</h2>
-            <p>Base de cálculo do módulo Comprador.</p>
-          </div>
-        </div>
-        <ul className="rules-list">
-          {BUYER_BUSINESS_RULES.map((rule) => (
-            <li key={rule}>{rule}</li>
-          ))}
-        </ul>
-      </section>
-    </>
-  );
 }
 
 function BuyerImportArea({ password }: { password: string }) {
