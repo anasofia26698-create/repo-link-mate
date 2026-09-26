@@ -9,7 +9,7 @@ import {
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { getBuyerGoalConfigs, getBuyerMonthlyOverview, getLineGoals, saveBuyerGoalBudget, saveBuyerGoalConfig, saveLineGoals } from "@/lib/buyer.functions";
+import { getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalBudget, saveBuyerGoalConfig } from "@/lib/buyer.functions";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -90,7 +90,6 @@ function PasswordGate({ children }: { children: ReactNode }) {
 
 type BuyerProfile = { name: string; ips: string; active: boolean };
 type MonthlyBuyerConfig = { sales: string; cmv: string; coverage: string; salesPurchases: string };
-type LineGoalForm = { id?: number | undefined; lineName: string; sales: string };
 
 const emptyMonthlyConfig = (): MonthlyBuyerConfig => ({ sales: "", cmv: "60", coverage: "", salesPurchases: "" });
 const monthLabel = (period: string) => { const [year, month] = period.split("-"); return year && month ? `${month}/${year}` : period; };
@@ -126,17 +125,15 @@ function BuyerGoalsForm() {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [monthly, setMonthly] = useState<Record<string, MonthlyBuyerConfig>>({});
   const [profiles, setProfiles] = useState<Record<string, BuyerProfile>>({});
-  const [lineGoals, setLineGoals] = useState<LineGoalForm[]>(() => SECTORS.map((lineName) => ({ lineName, sales: "" })));
   const [saving, setSaving] = useState(false);
   const goalConfigs = useQuery({ queryKey: ["buyer-goal-configs", period], queryFn: () => getBuyerGoalConfigs({ data: { period } }) });
-  const storedLineGoals = useQuery({ queryKey: ["line-goals", period], queryFn: () => getLineGoals({ data: { period } }) });
   const currentMonthly = BUYERS.reduce<Record<string, MonthlyBuyerConfig>>((result, buyer) => {
     result[buyer] = monthly[`${period}:${buyer}`] ?? emptyMonthlyConfig();
     return result;
   }, {});
 
   useEffect(() => {
-    if (goalConfigs.isLoading || storedLineGoals.isLoading) return;
+    if (goalConfigs.isLoading) return;
     const nextMonthly: Record<string, MonthlyBuyerConfig> = {};
     for (const buyer of BUYERS) {
       const config = goalConfigs.data?.find((item) => item.buyer === buyer);
@@ -149,12 +146,7 @@ function BuyerGoalsForm() {
       const config = goalConfigs.data?.find((item) => item.buyer === buyer);
       return [buyer, { name: buyer, ips: config?.ips.join(", ") ?? "", active: true }];
     })));
-    const savedLines = storedLineGoals.data ?? [];
-    setLineGoals(SECTORS.map((lineName) => {
-      const saved = savedLines.find((line) => line.lineName === lineName);
-      return { id: saved?.id, lineName, sales: saved ? money(saved.salesCents / 100) : "" };
-    }));
-  }, [period, goalConfigs.data, goalConfigs.isLoading, storedLineGoals.data, storedLineGoals.isLoading]);
+  }, [period, goalConfigs.data, goalConfigs.isLoading]);
 
   const updateMoney = (value: string, onChange: (value: string) => void) => {
     const next = value.replace(/^R\$\s*/, "");
@@ -180,18 +172,9 @@ function BuyerGoalsForm() {
         await saveBuyerGoalConfig({ data: { period, buyer, salesCents: Math.round(sales * 100), cmvPercent: cmv, ips } });
         await saveBuyerGoalBudget({ data: { period, buyer, monthlyCents: Math.round(sales * 0.6 * 100) } });
       }
-      const linePayload = lineGoals.map((line) => {
-        const rawSales = line.sales.replace(/^R\$\s*/, "");
-        const validBRL = /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/;
-        if (rawSales && !validBRL.test(rawSales)) throw new Error(`Use o formato brasileiro para a venda da linha ${line.lineName}.`);
-        return { id: line.id, lineName: line.lineName, salesCents: Math.round(parseBRL(line.sales) * 100) };
-      });
-      if (linePayload.some((line) => !Number.isFinite(line.salesCents) || line.salesCents < 0)) throw new Error("Informe valores válidos para as metas por linha.");
-      await saveLineGoals({ data: { period, goals: linePayload } });
       setMonthly(normalizedMonthly);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["buyer-goal-configs", period] }),
-        queryClient.invalidateQueries({ queryKey: ["line-goals", period] }),
       ]);
       toast.success(`Metas de ${monthLabel(period)} salvas com sucesso.`);
     } catch (error) {
@@ -206,15 +189,9 @@ function BuyerGoalsForm() {
     <>
       <div className="card-heading" style={{ marginBottom: "1rem" }}>
         <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
-        <button className="btn btn-dark" onClick={save} disabled={saving || goalConfigs.isLoading || storedLineGoals.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</button>
+        <button className="btn btn-dark" onClick={save} disabled={saving || goalConfigs.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "1.25rem", alignItems: "start" }}>
-        <section className="card goals-card">
-          <div className="card-heading"><div><h2>Metas por linha</h2><p>Preencha a venda prevista para cada linha.</p></div></div>
-          <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Linha</th><th>Venda prevista (R$)</th></tr></thead><tbody>
-            {lineGoals.map((line, index) => <tr key={line.lineName}><td><strong>{line.lineName}</strong></td><td><input inputMode="decimal" value={line.sales} placeholder="0,00" onChange={(event) => updateMoney(event.target.value, (value) => setLineGoals((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, sales: value } : item)))} onBlur={() => setLineGoals((current) => current.map((item, itemIndex) => itemIndex === index && item.sales ? { ...item, sales: money(parseBRL(item.sales)) } : item))} /></td></tr>)}
-          </tbody></table></div>
-        </section>
+      <div style={{ display: "block" }}>
         <section className="card goals-card">
           <div className="card-heading"><div><h2>Meta por comprador</h2><p>Venda mensal, CMV informativo e IPs vinculados.</p></div></div>
           <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês (R$)</th><th>% CMV alvo</th><th>IPs vinculados</th><th>Dotação mensal</th><th>Participação</th></tr></thead><tbody>
