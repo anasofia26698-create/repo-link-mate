@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-react";
-import {
-  calculateConsumption,
-  calculatePurchaseBudget,
-  isPurchaseAccessGranted,
-} from "@/lib/purchaseRules";
+import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalBudget, saveBuyerGoalConfig } from "@/lib/buyer.functions";
+import { listCashFlow } from "@/lib/cashflow.functions";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -30,22 +29,6 @@ export type Goal = {
   coverage: number;
   turnover: number;
 };
-type Purchase = { id: string; date: string; sector: Sector; supplier: string; value: number; invoice: string };
-
-const GOALS_KEY = "signal-cash-purchase-goals-v1";
-const PURCHASES_KEY = "signal-cash-purchases-v1";
-const MONTHLY_TOTAL_SNAPSHOTS_KEY = "signal-cash-monthly-payable-snapshots-v1";
-const SEPTEMBER_MONTHLY_TOTAL = { total: 2723875.38, paid: 2031741.5, open: 692133.88 };
-
-function read<T>(key: string, fallback: T): T {
-  try {
-    if (typeof window === "undefined") return fallback;
-    const value = JSON.parse(localStorage.getItem(key) || "null");
-    return value ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 const emptyGoal = (sector: Sector): Goal => ({
   sector,
@@ -94,6 +77,17 @@ type MonthlyBuyerConfig = { sales: string; cmv: string; coverage: string; salesP
 
 const emptyMonthlyConfig = (): MonthlyBuyerConfig => ({ sales: "", cmv: "60", coverage: "", salesPurchases: "" });
 const monthLabel = (period: string) => { const [year, month] = period.split("-"); return year && month ? `${month}/${year}` : period; };
+const MONTHLY_TOTAL_SNAPSHOTS_KEY = "signal-cash-monthly-payable-snapshots-v1";
+const SEPTEMBER_MONTHLY_TOTAL = { total: 2723875.38, paid: 2031741.5, open: 692133.88 };
+
+function readMonthlySnapshots(): Record<string, number> {
+  try {
+    if (typeof window === "undefined") return {};
+    return JSON.parse(window.localStorage.getItem(MONTHLY_TOTAL_SNAPSHOTS_KEY) || "{}") as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
 
 export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
   return (
@@ -215,110 +209,165 @@ function BuyerGoalsForm() {
   );
 }
 
-export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
-  const [goals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
-  const [purchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
-  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
-  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
-  const [snapshots, setSnapshots] = useState<Record<string, number>>(() => read(MONTHLY_TOTAL_SNAPSHOTS_KEY, {}));
-  const rows = goals.map((goal) => {
-    const budget = calculatePurchaseBudget(goal.sales, goal.cmv, goal.initialStock, goal.finalStock);
-    const bought = purchases.filter((item) => item.sector === goal.sector).reduce((sum, item) => sum + item.value, 0);
-    const consumption = calculateConsumption(budget, bought);
-    return { ...goal, budget, bought, balance: budget - bought, consumption };
+const buyerChartConfig = {
+  Marcelo: { label: "Marcelo", color: "var(--chart-marcelo)" },
+  Suellen: { label: "Suellen", color: "var(--chart-suellen)" },
+  "Maurício": { label: "Maurício", color: "var(--chart-mauricio)" },
+} satisfies ChartConfig;
+
+export function PurchasesDashboardTab() {
+  const currentPeriod = new Date().toISOString().slice(0, 7);
+  const [period, setPeriod] = useState(currentPeriod);
+  const [snapshots, setSnapshots] = useState<Record<string, number>>(readMonthlySnapshots);
+  const overview = useQuery({
+    queryKey: ["buyer-monthly-overview"],
+    queryFn: () => getBuyerMonthlyOverview(),
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: true,
   });
-  const totals = rows.reduce(
-    (acc, row) => ({ budget: acc.budget + row.budget, bought: acc.bought + row.bought, balance: acc.balance + row.balance }),
-    { budget: 0, bought: 0, balance: 0 },
-  );
-  const monthlyAmounts = useMemo(() => {
-    const paid = (overview.data?.payments ?? []).filter((item) => item.source === "confirmed" && item.date.slice(0, 7) === period).reduce((sum, item) => sum + item.amountCents / 100, 0);
-    const open = (overview.data?.payments ?? []).filter((item) => item.source === "imported" && item.date.slice(0, 7) === period).reduce((sum, item) => sum + item.amountCents / 100, 0);
-    const observed = paid + open;
-    if (period === "2026-09") return SEPTEMBER_MONTHLY_TOTAL;
-    const total = Math.max(observed, snapshots[period] ?? 0);
-    return { total, paid, open: Math.max(0, total - paid) };
-  }, [overview.data, period, snapshots]);
-  const monthlyBudget = (overview.data?.budgets ?? [])
-    .filter((item) => item.period === period)
-    .reduce((sum, item) => sum + item.monthlyCents, 0) / 100;
+  const sharedFlow = useQuery({
+    queryKey: ["cash-flow-entries"],
+    queryFn: () => listCashFlow(),
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: true,
+  });
+  const periods = useMemo(() => {
+    const fixed = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01"];
+    const imported = (overview.data?.payments ?? []).map((item) => item.date.slice(0, 7));
+    const cashFlowMonths = (sharedFlow.data ?? []).filter((item) => item.source === "imported").map((item) => item.date.slice(0, 7));
+    const configured = (overview.data?.budgets ?? []).map((item) => item.period);
+    return [...new Set([...fixed, currentPeriod, ...imported, ...cashFlowMonths, ...configured])]
+      .filter((item) => item >= "2026-09")
+      .sort();
+  }, [currentPeriod, overview.data, sharedFlow.data]);
+  const rows = useMemo(() => {
+    const budgets = overview.data?.budgets ?? [];
+    const payments = overview.data?.payments ?? [];
+    return BUYERS.map((buyer) => {
+      const budget = (budgets.find((item) => item.period === period && item.buyer === buyer)?.monthlyCents ?? 0) / 100;
+      const bought = payments
+        .filter((item) => item.source === "imported" && item.buyer === buyer && item.date.slice(0, 7) === period)
+        .reduce((sum, item) => sum + item.amountCents, 0) / 100;
+      const pct = budget > 0 ? bought / budget * 100 : bought > 0 ? 100 : 0;
+      return { buyer, budget, bought, available: budget - bought, pct };
+    });
+  }, [overview.data, period]);
+  const totalBudget = rows.reduce((total, row) => total + row.budget, 0);
+  const observedPayable = (sharedFlow.data ?? [])
+    .filter((item) => item.source === "imported" && item.date.slice(0, 7) === period)
+    .reduce((total, item) => total + item.debitCents, 0) / 100;
+  const totalPayable = period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.total : Math.max(observedPayable, snapshots[period] ?? 0);
+  const paid = period === "2026-09"
+    ? SEPTEMBER_MONTHLY_TOTAL.paid
+    : (overview.data?.payments ?? [])
+        .filter((item) => item.source === "confirmed" && item.date.slice(0, 7) === period)
+        .reduce((total, item) => total + item.amountCents, 0) / 100;
+  const open = period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.open : Math.max(0, totalPayable - paid);
+  const balance = totalBudget - totalPayable;
+  const consumption = totalBudget > 0 ? totalPayable / totalBudget * 100 : totalPayable > 0 ? 100 : 0;
+  const consumptionTone = consumption > 100 ? "progress-danger" : "";
   useEffect(() => {
-    if (period === "2026-09" || !overview.data) return;
-    const observed = overview.data.payments.filter((item) => item.date.slice(0, 7) === period).reduce((sum, item) => sum + item.amountCents / 100, 0);
-    if (observed > (snapshots[period] ?? 0)) setSnapshots((current) => ({ ...current, [period]: observed }));
-  }, [overview.data, period, snapshots]);
+    if (period === "2026-09" || !sharedFlow.data || observedPayable <= (snapshots[period] ?? 0)) return;
+    setSnapshots((current) => ({ ...current, [period]: observedPayable }));
+  }, [observedPayable, period, sharedFlow.data, snapshots]);
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(MONTHLY_TOTAL_SNAPSHOTS_KEY, JSON.stringify(snapshots));
   }, [snapshots]);
-  const budgetTotal = monthlyBudget || totals.budget;
-  const available = budgetTotal - monthlyAmounts.total;
-  const consumption = budgetTotal > 0 ? (monthlyAmounts.total / budgetTotal) * 100 : 0;
+  const chartData = useMemo(() => {
+    const [year = "", month = ""] = period.split("-");
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+    const points = Array.from({ length: daysInMonth }, (_, index) => ({
+      day: String(index + 1).padStart(2, "0"),
+      Marcelo: 0,
+      Suellen: 0,
+      "Maurício": 0,
+    }));
+    for (const payment of overview.data?.payments ?? []) {
+      if (payment.source !== "imported" || payment.date.slice(0, 7) !== period) continue;
+      const dayIndex = Number(payment.date.slice(8, 10)) - 1;
+      const point = points[dayIndex];
+      if (!point || !BUYERS.includes(payment.buyer as (typeof BUYERS)[number])) continue;
+      const buyer = payment.buyer as (typeof BUYERS)[number];
+      point[buyer] += payment.amountCents / 100;
+    }
+    return points;
+  }, [overview.data?.payments, period]);
   return (
-    <PasswordGate skip={!requireBuyerAccess}>
-      <div className="page-heading page-heading-compact">
+    <>
+      <div className="page-heading page-heading-compact purchase-dashboard-heading">
         <div>
           <p className="eyebrow">Metas compras</p>
           <h1>Dashboard de Compras</h1>
-          <p className="subheading">Acompanhamento consolidado da dotação das 14 lojas.</p>
+          <p className="subheading">Acompanhamento consolidado de Marcelo, Suellen e Maurício.</p>
         </div>
-        <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
+        <label className="dashboard-month-select">
+          Mês de referência
+          <select value={period} onChange={(event) => setPeriod(event.target.value)}>
+            {periods.map((item) => <option key={item} value={item}>{formatMonth(item)}</option>)}
+          </select>
+        </label>
       </div>
       <div className="purchase-kpis">
         <div className="summary-card">
           <span>Dotação total</span>
-          <strong>{money(budgetTotal)}</strong>
+          <strong>{money(totalBudget)}</strong>
         </div>
         <div className="summary-card">
           <span>A pagar total mês</span>
-          <strong>{money(monthlyAmounts.total)}</strong>
-          <small>Pago: {money(monthlyAmounts.paid)} | Em aberto: {money(monthlyAmounts.open)}</small>
+          <strong>{money(totalPayable)}</strong>
+          <small>Pago: {money(paid)} | Em aberto: {money(open)}</small>
         </div>
         <div className="summary-card">
           <span>Saldo disponível</span>
-          <strong className={available < 0 ? "red-text" : "green-text"}>{money(available)}</strong>
+          <strong className={balance < 0 ? "red-text" : "green-text"}>{money(balance)}</strong>
         </div>
-        <div className="summary-card">
+        <div className="summary-card consumption-card">
           <span>Consumo geral</span>
-          <strong>{consumption.toFixed(1).replace(".", ",")} %</strong>
+          <strong className={consumption > 100 ? "red-text" : "green-text"}>{formatPercent(consumption)}</strong>
+          <div className="general-progress-track" aria-label={`Consumo geral de ${formatPercent(consumption)}`}>
+            <div className={`general-progress-fill ${consumptionTone}`} style={{ width: `${Math.min(100, Math.max(0, consumption))}%` }} />
+          </div>
         </div>
       </div>
-      <BuyerMonthlyPanel period={period} />
-    </PasswordGate>
+      <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} />
+      <BuyerEvolutionChart data={chartData} period={period} loading={overview.isLoading} />
+    </>
   );
 }
 
-function BuyerMonthlyPanel({ period }: { period: string }) {
-  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
-  const budgets = overview.data?.budgets ?? [];
-  const payments = overview.data?.payments ?? [];
-  const rows = BUYERS.map((buyer: (typeof BUYERS)[number]) => {
-    const found = budgets.find((item) => item.period === period && item.buyer === buyer);
-    const budget = (found?.monthlyCents ?? 0) / 100;
-    const bought =
-      payments
-        .filter((item) => item.buyer === buyer && item.date.slice(0, 7) === period)
-        .reduce((sum, item) => sum + item.amountCents, 0) / 100;
-    const pct = budget > 0 ? (bought / budget) * 100 : 0;
-    return { buyer, budget, bought, available: budget - bought, pct, period };
-  });
+function formatMonth(period: string) {
+  const [year = "", month = ""] = period.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  if (!year || !month || Number.isNaN(date.getTime())) return period;
+  const label = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(1).replace(".", ",")}%`;
+}
+
+type BuyerMonthlyRow = { buyer: (typeof BUYERS)[number]; budget: number; bought: number; available: number; pct: number };
+
+function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[]; period: string; loading: boolean }) {
   return (
     <section className="card">
       <div className="card-heading">
         <div>
           <h2>Atingimento mensal por comprador</h2>
-          <p>Dotação orçamentária do módulo Comprador (Marcelo, Suellen e Maurício).</p>
+          <p>{formatMonth(period)} · metas cadastradas e compras da planilha importada no módulo Comprador.</p>
         </div>
         <BarChart3 size={21} />
       </div>
       <div className="buyer-month-list">
-        {overview.isLoading && <div className="empty">Carregando dotação por comprador...</div>}
-        {!overview.isLoading &&
+        {loading && <div className="empty">Carregando dotação por comprador...</div>}
+        {!loading &&
           rows.map((row) => (
             <div className="buyer-month-row" key={row.buyer}>
               <div className="buyer-month-head">
                 <strong>{row.buyer}</strong>
                 <span>
-                  {row.period} · {row.pct.toFixed(1).replace(".", ",")}%
+                  {formatMonth(period)} · {formatPercent(row.pct)}
                 </span>
               </div>
               <div className="buyer-month-metrics">
@@ -337,18 +386,67 @@ function BuyerMonthlyPanel({ period }: { period: string }) {
               </div>
               <div className="buyer-month-track">
                 <div
-                  className={"buyer-month-fill " + (row.pct >= 100 ? "over" : row.pct >= 80 ? "warn" : "")}
+                   className={"buyer-month-fill " + (row.pct > 100 ? "over" : row.pct >= 80 ? "warn" : "")}
                   style={{ width: `${Math.min(100, Math.max(0, row.pct))}%` }}
                 />
               </div>
-              {row.pct >= 100 ? (
-                <div className="buyer-month-warning">Dotação mensal ultrapassada ({row.pct.toFixed(1).replace(".", ",")}%).</div>
+              {row.pct > 100 ? (
+                <div className="buyer-month-warning">Dotação mensal ultrapassada ({formatPercent(row.pct)}).</div>
               ) : row.pct >= 80 ? (
                 <div className="buyer-month-warning">Atenção: acima de 80% da dotação mensal.</div>
               ) : null}
             </div>
           ))}
       </div>
+    </section>
+  );
+}
+
+type BuyerChartPoint = { day: string; Marcelo: number; Suellen: number; "Maurício": number };
+
+function BuyerEvolutionChart({ data, period, loading }: { data: BuyerChartPoint[]; period: string; loading: boolean }) {
+  const hasPayments = data.some((point) => BUYERS.some((buyer) => point[buyer] > 0));
+  return (
+    <section className="card buyer-evolution-card">
+      <div className="card-heading">
+        <div>
+          <h2>Evolução do mês por comprador</h2>
+          <p>{formatMonth(period)} · volume diário de contas a pagar por comprador.</p>
+        </div>
+        <BarChart3 size={21} />
+      </div>
+      {loading ? (
+        <div className="empty">Carregando evolução do mês...</div>
+      ) : !hasPayments ? (
+        <div className="empty">Nenhum pagamento por comprador neste mês.</div>
+      ) : (
+        <div className="buyer-evolution-chart">
+          <ChartContainer config={buyerChartConfig} className="buyer-chart-container">
+            <LineChart data={data} margin={{ top: 12, right: 18, left: 12, bottom: 4 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} minTickGap={14} />
+              <YAxis tickLine={false} axisLine={false} width={86} tickFormatter={(value) => money(Number(value)).replace(",00", "")} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(label) => `Dia ${String(label).padStart(2, "0")}`}
+                    formatter={(value, name) => (
+                      <div className="buyer-chart-tooltip-row">
+                        <span>{buyerChartConfig[String(name) as keyof typeof buyerChartConfig]?.label ?? String(name)}</span>
+                        <strong>{money(Number(value))}</strong>
+                      </div>
+                    )}
+                  />
+                }
+              />
+              <ChartLegend content={<ChartLegendContent />} />
+              {BUYERS.map((buyer) => (
+                <Line key={buyer} type="monotone" dataKey={buyer} stroke={`var(--color-${buyer})`} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              ))}
+            </LineChart>
+          </ChartContainer>
+        </div>
+      )}
     </section>
   );
 }
