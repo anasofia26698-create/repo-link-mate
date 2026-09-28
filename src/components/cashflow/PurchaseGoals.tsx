@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-react";
 import {
   calculateConsumption,
@@ -34,6 +34,8 @@ type Purchase = { id: string; date: string; sector: Sector; supplier: string; va
 
 const GOALS_KEY = "signal-cash-purchase-goals-v1";
 const PURCHASES_KEY = "signal-cash-purchases-v1";
+const MONTHLY_TOTAL_SNAPSHOTS_KEY = "signal-cash-monthly-payable-snapshots-v1";
+const SEPTEMBER_MONTHLY_TOTAL = { total: 2723875.38, paid: 2031741.5, open: 692133.88 };
 
 function read<T>(key: string, fallback: T): T {
   try {
@@ -216,6 +218,9 @@ function BuyerGoalsForm() {
 export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
   const [goals] = useState<Goal[]>(() => read(GOALS_KEY, SECTORS.map(emptyGoal)));
   const [purchases] = useState<Purchase[]>(() => read(PURCHASES_KEY, []));
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
+  const [snapshots, setSnapshots] = useState<Record<string, number>>(() => read(MONTHLY_TOTAL_SNAPSHOTS_KEY, {}));
   const rows = goals.map((goal) => {
     const budget = calculatePurchaseBudget(goal.sales, goal.cmv, goal.initialStock, goal.finalStock);
     const bought = purchases.filter((item) => item.sector === goal.sector).reduce((sum, item) => sum + item.value, 0);
@@ -226,6 +231,28 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
     (acc, row) => ({ budget: acc.budget + row.budget, bought: acc.bought + row.bought, balance: acc.balance + row.balance }),
     { budget: 0, bought: 0, balance: 0 },
   );
+  const monthlyAmounts = useMemo(() => {
+    const paid = (overview.data?.payments ?? []).filter((item) => item.source === "confirmed" && item.date.slice(0, 7) === period).reduce((sum, item) => sum + item.amountCents / 100, 0);
+    const open = (overview.data?.payments ?? []).filter((item) => item.source === "imported" && item.date.slice(0, 7) === period).reduce((sum, item) => sum + item.amountCents / 100, 0);
+    const observed = paid + open;
+    if (period === "2026-09") return SEPTEMBER_MONTHLY_TOTAL;
+    const total = Math.max(observed, snapshots[period] ?? 0);
+    return { total, paid, open: Math.max(0, total - paid) };
+  }, [overview.data, period, snapshots]);
+  const monthlyBudget = (overview.data?.budgets ?? [])
+    .filter((item) => item.period === period)
+    .reduce((sum, item) => sum + item.monthlyCents, 0) / 100;
+  useEffect(() => {
+    if (period === "2026-09" || !overview.data) return;
+    const observed = overview.data.payments.filter((item) => item.date.slice(0, 7) === period).reduce((sum, item) => sum + item.amountCents / 100, 0);
+    if (observed > (snapshots[period] ?? 0)) setSnapshots((current) => ({ ...current, [period]: observed }));
+  }, [overview.data, period, snapshots]);
+  useEffect(() => {
+    if (typeof window !== "undefined") window.localStorage.setItem(MONTHLY_TOTAL_SNAPSHOTS_KEY, JSON.stringify(snapshots));
+  }, [snapshots]);
+  const budgetTotal = monthlyBudget || totals.budget;
+  const available = budgetTotal - monthlyAmounts.total;
+  const consumption = budgetTotal > 0 ? (monthlyAmounts.total / budgetTotal) * 100 : 0;
   return (
     <PasswordGate skip={!requireBuyerAccess}>
       <div className="page-heading page-heading-compact">
@@ -234,45 +261,45 @@ export function PurchasesDashboardTab({ requireBuyerAccess = true }: { requireBu
           <h1>Dashboard de Compras</h1>
           <p className="subheading">Acompanhamento consolidado da dotação das 14 lojas.</p>
         </div>
+        <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
       </div>
       <div className="purchase-kpis">
         <div className="summary-card">
           <span>Dotação total</span>
-          <strong>{money(totals.budget)}</strong>
+          <strong>{money(budgetTotal)}</strong>
         </div>
         <div className="summary-card">
-          <span>Comprado total</span>
-          <strong>{money(totals.bought)}</strong>
+          <span>A pagar total mês</span>
+          <strong>{money(monthlyAmounts.total)}</strong>
+          <small>Pago: {money(monthlyAmounts.paid)} | Em aberto: {money(monthlyAmounts.open)}</small>
         </div>
         <div className="summary-card">
           <span>Saldo disponível</span>
-          <strong className={totals.balance < 0 ? "red-text" : "green-text"}>{money(totals.balance)}</strong>
+          <strong className={available < 0 ? "red-text" : "green-text"}>{money(available)}</strong>
         </div>
         <div className="summary-card">
           <span>Consumo geral</span>
-          <strong>{totals.budget > 0 ? (totals.bought / totals.budget * 100).toFixed(1) : "0,0"}%</strong>
+          <strong>{consumption.toFixed(1).replace(".", ",")} %</strong>
         </div>
       </div>
-      <BuyerMonthlyPanel />
+      <BuyerMonthlyPanel period={period} />
     </PasswordGate>
   );
 }
 
-function BuyerMonthlyPanel() {
-  const period = new Date().toISOString().slice(0, 7);
+function BuyerMonthlyPanel({ period }: { period: string }) {
   const overview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
   const budgets = overview.data?.budgets ?? [];
   const payments = overview.data?.payments ?? [];
   const rows = BUYERS.map((buyer: (typeof BUYERS)[number]) => {
-    const found = budgets.find((item) => item.period === period && item.buyer === buyer) ?? budgets.find((item) => item.buyer === buyer);
+    const found = budgets.find((item) => item.period === period && item.buyer === buyer);
     const budget = (found?.monthlyCents ?? 0) / 100;
-    const usedPeriod = found?.period ?? period;
     const bought =
       payments
-        .filter((item) => item.buyer === buyer && item.date.slice(0, 7) === usedPeriod)
+        .filter((item) => item.buyer === buyer && item.date.slice(0, 7) === period)
         .reduce((sum, item) => sum + item.amountCents, 0) / 100;
     const pct = budget > 0 ? (bought / budget) * 100 : 0;
-    return { buyer, budget, bought, available: budget - bought, pct, period: usedPeriod };
+    return { buyer, budget, bought, available: budget - bought, pct, period };
   });
   return (
     <section className="card">
