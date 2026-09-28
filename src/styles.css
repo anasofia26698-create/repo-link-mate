@@ -114,11 +114,6 @@
 .purchase-dashboard-heading { align-items:flex-end; }
 .dashboard-month-select { min-width:230px; }
 .dashboard-month-select select { min-height:42px; padding:9px 36px 9px 11px; border:1px solid var(--border); border-radius:7px; color:var(--foreground); background:#fff; font:600 14px 'DM Sans',sans-serif; }
-.consumption-card { display:grid; align-content:start; }
-.general-progress-track { width:100%; height:10px; margin-top:12px; overflow:hidden; border-radius:99px; background:#e8f3eb; }
-.general-progress-fill { height:100%; border-radius:99px; background:#4ca66e; transition:width .2s ease; }
-.buyer-evolution-card { margin-top:16px; }
-.buyer-evolution-chart { min-width:0; padding:18px 18px 12px; overflow-x:auto; }
 .buyer-chart-container { width:100%; min-width:760px; height:360px; aspect-ratio:auto; }
 .buyer-chart-tooltip-row { display:flex; min-width:180px; align-items:center; justify-content:space-between; gap:20px; }
 .buyer-chart-tooltip-row span { color:var(--muted); }

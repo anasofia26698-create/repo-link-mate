@@ -3,11 +3,9 @@ import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-
 import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalBudget, saveBuyerGoalConfig } from "@/lib/buyer.functions";
 import { listCashFlow } from "@/lib/cashflow.functions";
-import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -209,11 +207,6 @@ function BuyerGoalsForm() {
   );
 }
 
-const buyerChartConfig = {
-  Marcelo: { label: "Marcelo", color: "var(--chart-marcelo)" },
-  Suellen: { label: "Suellen", color: "var(--chart-suellen)" },
-  "Maurício": { label: "Maurício", color: "var(--chart-mauricio)" },
-} satisfies ChartConfig;
 
 export function PurchasesDashboardTab() {
   const currentPeriod = new Date().toISOString().slice(0, 7);
@@ -265,7 +258,6 @@ export function PurchasesDashboardTab() {
   const open = period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.open : Math.max(0, totalPayable - paid);
   const balance = totalBudget - totalPayable;
   const consumption = totalBudget > 0 ? totalPayable / totalBudget * 100 : totalPayable > 0 ? 100 : 0;
-  const consumptionTone = consumption > 100 ? "progress-danger" : "";
   useEffect(() => {
     if (period === "2026-09" || !sharedFlow.data || observedPayable <= (snapshots[period] ?? 0)) return;
     setSnapshots((current) => ({ ...current, [period]: observedPayable }));
@@ -273,25 +265,6 @@ export function PurchasesDashboardTab() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(MONTHLY_TOTAL_SNAPSHOTS_KEY, JSON.stringify(snapshots));
   }, [snapshots]);
-  const chartData = useMemo(() => {
-    const [year = "", month = ""] = period.split("-");
-    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-    const points = Array.from({ length: daysInMonth }, (_, index) => ({
-      day: String(index + 1).padStart(2, "0"),
-      Marcelo: 0,
-      Suellen: 0,
-      "Maurício": 0,
-    }));
-    for (const payment of overview.data?.payments ?? []) {
-      if (payment.source !== "imported" || payment.date.slice(0, 7) !== period) continue;
-      const dayIndex = Number(payment.date.slice(8, 10)) - 1;
-      const point = points[dayIndex];
-      if (!point || !BUYERS.includes(payment.buyer as (typeof BUYERS)[number])) continue;
-      const buyer = payment.buyer as (typeof BUYERS)[number];
-      point[buyer] += payment.amountCents / 100;
-    }
-    return points;
-  }, [overview.data?.payments, period]);
   return (
     <>
       <div className="page-heading page-heading-compact purchase-dashboard-heading">
@@ -321,16 +294,12 @@ export function PurchasesDashboardTab() {
           <span>Saldo disponível</span>
           <strong className={balance < 0 ? "red-text" : "green-text"}>{money(balance)}</strong>
         </div>
-        <div className="summary-card consumption-card">
+        <div className="summary-card">
           <span>Consumo geral</span>
           <strong className={consumption > 100 ? "red-text" : "green-text"}>{formatPercent(consumption)}</strong>
-          <div className="general-progress-track" aria-label={`Consumo geral de ${formatPercent(consumption)}`}>
-            <div className={`general-progress-fill ${consumptionTone}`} style={{ width: `${Math.min(100, Math.max(0, consumption))}%` }} />
-          </div>
         </div>
       </div>
       <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} />
-      <BuyerEvolutionChart data={chartData} period={period} loading={overview.isLoading} />
     </>
   );
 }
@@ -398,55 +367,6 @@ function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[];
             </div>
           ))}
       </div>
-    </section>
-  );
-}
-
-type BuyerChartPoint = { day: string; Marcelo: number; Suellen: number; "Maurício": number };
-
-function BuyerEvolutionChart({ data, period, loading }: { data: BuyerChartPoint[]; period: string; loading: boolean }) {
-  const hasPayments = data.some((point) => BUYERS.some((buyer) => point[buyer] > 0));
-  return (
-    <section className="card buyer-evolution-card">
-      <div className="card-heading">
-        <div>
-          <h2>Evolução do mês por comprador</h2>
-          <p>{formatMonth(period)} · volume diário de contas a pagar por comprador.</p>
-        </div>
-        <BarChart3 size={21} />
-      </div>
-      {loading ? (
-        <div className="empty">Carregando evolução do mês...</div>
-      ) : !hasPayments ? (
-        <div className="empty">Nenhum pagamento por comprador neste mês.</div>
-      ) : (
-        <div className="buyer-evolution-chart">
-          <ChartContainer config={buyerChartConfig} className="buyer-chart-container">
-            <LineChart data={data} margin={{ top: 12, right: 18, left: 12, bottom: 4 }}>
-              <CartesianGrid vertical={false} strokeDasharray="3 3" />
-              <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} minTickGap={14} />
-              <YAxis tickLine={false} axisLine={false} width={86} tickFormatter={(value) => money(Number(value)).replace(",00", "")} />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(label) => `Dia ${String(label).padStart(2, "0")}`}
-                    formatter={(value, name) => (
-                      <div className="buyer-chart-tooltip-row">
-                        <span>{buyerChartConfig[String(name) as keyof typeof buyerChartConfig]?.label ?? String(name)}</span>
-                        <strong>{money(Number(value))}</strong>
-                      </div>
-                    )}
-                  />
-                }
-              />
-              <ChartLegend content={<ChartLegendContent />} />
-              {BUYERS.map((buyer) => (
-                <Line key={buyer} type="monotone" dataKey={buyer} stroke={`var(--color-${buyer})`} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
-              ))}
-            </LineChart>
-          </ChartContainer>
-        </div>
-      )}
     </section>
   );
 }
