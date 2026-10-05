@@ -3,9 +3,11 @@ import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-
 import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalBudget, saveBuyerGoalConfig } from "@/lib/buyer.functions";
 import { listCashFlow } from "@/lib/cashflow.functions";
+import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 
 export const SECTORS = [
@@ -86,6 +88,13 @@ function readMonthlySnapshots(): Record<string, number> {
     return {};
   }
 }
+
+const buyerChartConfig = {
+  Marcelo: { label: "Marcelo", color: "var(--chart-marcelo)" },
+  Suellen: { label: "Suellen", color: "var(--chart-suellen)" },
+  "Maurício": { label: "Maurício", color: "var(--chart-mauricio)" },
+} satisfies ChartConfig;
+type BuyerChartPoint = { day: string; Marcelo: number; Suellen: number; "Maurício": number };
 
 export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
   return (
@@ -265,6 +274,23 @@ export function PurchasesDashboardTab() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(MONTHLY_TOTAL_SNAPSHOTS_KEY, JSON.stringify(snapshots));
   }, [snapshots]);
+  const chartData = useMemo(() => {
+    const [year = "", month = ""] = period.split("-");
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
+    const points: BuyerChartPoint[] = Array.from({ length: daysInMonth }, (_, index) => ({
+      day: String(index + 1).padStart(2, "0"),
+      Marcelo: 0,
+      Suellen: 0,
+      "Maurício": 0,
+    }));
+    for (const payment of overview.data?.payments ?? []) {
+      if (payment.source !== "imported" || payment.date.slice(0, 7) !== period) continue;
+      const point = points[Number(payment.date.slice(8, 10)) - 1];
+      if (!point || !BUYERS.includes(payment.buyer as (typeof BUYERS)[number])) continue;
+      point[payment.buyer as (typeof BUYERS)[number]] += payment.amountCents / 100;
+    }
+    return points;
+  }, [overview.data?.payments, period]);
   return (
     <>
       <div className="page-heading page-heading-compact purchase-dashboard-heading">
@@ -300,6 +326,7 @@ export function PurchasesDashboardTab() {
         </div>
       </div>
       <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} />
+      <BuyerDaysChart data={chartData} period={period} loading={overview.isLoading} />
     </>
   );
 }
@@ -367,6 +394,60 @@ function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[];
             </div>
           ))}
       </div>
+    </section>
+  );
+}
+
+function BuyerDaysChart({ data, period, loading }: { data: BuyerChartPoint[]; period: string; loading: boolean }) {
+  const peaks = BUYERS.map((buyer) => {
+    const point = data.reduce((best, current) => current[buyer] > best[buyer] ? current : best, data[0] ?? { day: "01", Marcelo: 0, Suellen: 0, "Maurício": 0 });
+    return { buyer, day: point.day, value: point[buyer], color: buyerChartConfig[buyer].color };
+  });
+  const hasPayments = data.some((point) => BUYERS.some((buyer) => point[buyer] > 0));
+  return (
+    <section className="card buyer-evolution-card">
+      <div className="card-heading">
+        <div>
+          <h2>Dias de compra por comprador</h2>
+          <p>{formatMonth(period)} · volume diário de contas a pagar por comprador.</p>
+        </div>
+        <BarChart3 size={21} />
+      </div>
+      {loading ? (
+        <div className="empty">Carregando gráfico...</div>
+      ) : !hasPayments ? (
+        <div className="empty">Nenhum pagamento por comprador neste mês.</div>
+      ) : (
+        <div className="buyer-evolution-chart">
+          <ChartContainer config={buyerChartConfig} className="buyer-chart-container">
+            <LineChart data={data} margin={{ top: 12, right: 18, left: 12, bottom: 4 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} minTickGap={14} />
+              <YAxis tickLine={false} axisLine={false} width={86} tickFormatter={(value) => money(Number(value)).replace(",00", "")} />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    labelFormatter={(label) => `Dia ${String(label).padStart(2, "0")}`}
+                    formatter={(value, name) => (
+                      <div className="buyer-chart-tooltip-row">
+                        <span>{buyerChartConfig[String(name) as keyof typeof buyerChartConfig]?.label ?? String(name)}</span>
+                        <strong>{money(Number(value))}</strong>
+                      </div>
+                    )}
+                  />
+                }
+              />
+              <ChartLegend content={<ChartLegendContent />} />
+              {BUYERS.map((buyer) => (
+                <Line key={buyer} type="monotone" dataKey={buyer} stroke={`var(--color-${buyer})`} strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              ))}
+              {peaks.filter((peak) => peak.value > 0).map((peak) => (
+                <ReferenceDot key={peak.buyer} x={peak.day} y={peak.value} r={6} fill={peak.color} stroke="#fff" strokeWidth={2} />
+              ))}
+            </LineChart>
+          </ChartContainer>
+        </div>
+      )}
     </section>
   );
 }
