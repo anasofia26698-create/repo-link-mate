@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, BarChart3, Calculator, LockKeyhole, Save } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, Calculator, ChevronLeft, ChevronRight, LockKeyhole, Save } from "lucide-react";
 import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -221,6 +221,7 @@ function BuyerGoalsForm() {
 export function PurchasesDashboardTab() {
   const currentPeriod = new Date().toISOString().slice(0, 7);
   const [period, setPeriod] = useState(currentPeriod);
+  const [selectedBuyer, setSelectedBuyer] = useState<(typeof BUYERS)[number] | null>(null);
   const [snapshots, setSnapshots] = useState<Record<string, number>>(readMonthlySnapshots);
   const overview = useQuery({
     queryKey: ["buyer-monthly-overview"],
@@ -307,6 +308,17 @@ export function PurchasesDashboardTab() {
           </select>
         </label>
       </div>
+      {selectedBuyer ? (
+        <BuyerDetailView
+          buyer={selectedBuyer}
+          period={period}
+          rows={rows}
+          chartData={chartData}
+          onBack={() => setSelectedBuyer(null)}
+          onChangeBuyer={setSelectedBuyer}
+        />
+      ) : (
+        <>
       <div className="purchase-kpis">
         <div className="summary-card">
           <span>Dotação total</span>
@@ -326,8 +338,10 @@ export function PurchasesDashboardTab() {
           <strong className={consumption > 100 ? "red-text" : "green-text"}>{formatPercent(consumption)}</strong>
         </div>
       </div>
-      <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} />
+      <BuyerMonthlyPanel rows={rows} period={period} loading={overview.isLoading} onBuyerSelect={setSelectedBuyer} />
       <BuyerDaysChart data={chartData} period={period} loading={overview.isLoading} />
+        </>
+      )}
     </>
   );
 }
@@ -346,7 +360,7 @@ function formatPercent(value: number) {
 
 type BuyerMonthlyRow = { buyer: (typeof BUYERS)[number]; budget: number; bought: number; available: number; pct: number };
 
-function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[]; period: string; loading: boolean }) {
+function BuyerMonthlyPanel({ rows, period, loading, onBuyerSelect }: { rows: BuyerMonthlyRow[]; period: string; loading: boolean; onBuyerSelect: (buyer: (typeof BUYERS)[number]) => void }) {
   return (
     <section className="card">
       <div className="card-heading">
@@ -362,7 +376,9 @@ function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[];
           rows.map((row) => (
             <div className="buyer-month-row" key={row.buyer}>
               <div className="buyer-month-head">
-                <strong>{row.buyer}</strong>
+                <button type="button" onClick={() => onBuyerSelect(row.buyer)} style={{ border: 0, background: "transparent", padding: 0, color: "#155e75", cursor: "pointer", font: "inherit", fontWeight: 700, textAlign: "left", textDecoration: "underline" }} aria-label={`Abrir tela individual de ${row.buyer}`}>
+                  {row.buyer}
+                </button>
                 <span>
                   {formatMonth(period)} · {formatPercent(row.pct)}
                 </span>
@@ -395,6 +411,80 @@ function BuyerMonthlyPanel({ rows, period, loading }: { rows: BuyerMonthlyRow[];
             </div>
           ))}
       </div>
+    </section>
+  );
+}
+
+type BuyerDetailPoint = { day: string; value: number };
+
+function BuyerDetailView({
+  buyer,
+  period,
+  rows,
+  chartData,
+  onBack,
+  onChangeBuyer,
+}: {
+  buyer: (typeof BUYERS)[number];
+  period: string;
+  rows: BuyerMonthlyRow[];
+  chartData: BuyerChartPoint[];
+  onBack: () => void;
+  onChangeBuyer: (buyer: (typeof BUYERS)[number]) => void;
+}) {
+  const row = rows.find((item) => item.buyer === buyer) ?? { buyer, budget: 0, bought: 0, available: 0, pct: 0 };
+  const detailData: BuyerDetailPoint[] = chartData.map((point) => ({ day: point.day, value: point[buyer] }));
+  const peak = detailData.reduce((best, point) => point.value > best.value ? point : best, detailData[0] ?? { day: "01", value: 0 });
+  const buyerIndex = BUYERS.indexOf(buyer);
+  const detailConfig = { [buyer]: buyerChartConfig[buyer] } satisfies ChartConfig;
+
+  return (
+    <section className="buyer-detail-view">
+      <div className="card buyer-detail-header">
+        <div className="buyer-detail-title">
+          <button type="button" className="btn btn-light" onClick={onBack}><ArrowLeft size={17} /> Voltar</button>
+          <div>
+            <p className="eyebrow">Tela individual do comprador</p>
+            <h2>{buyer}</h2>
+            <p>{formatMonth(period)} · dados da importação de compras.</p>
+          </div>
+        </div>
+        <div className="buyer-detail-navigation">
+          <button type="button" className="btn btn-light" disabled={buyerIndex <= 0} onClick={() => onChangeBuyer(BUYERS[buyerIndex - 1]!)}><ChevronLeft size={16} /> Anterior</button>
+          <button type="button" className="btn btn-light" disabled={buyerIndex >= BUYERS.length - 1} onClick={() => onChangeBuyer(BUYERS[buyerIndex + 1]!)}>Próximo <ChevronRight size={16} /></button>
+        </div>
+      </div>
+      <div className="purchase-kpis buyer-detail-kpis">
+        <div className="summary-card"><span>Mês</span><strong>{formatMonth(period)}</strong></div>
+        <div className="summary-card"><span>Dotação do mês</span><strong>{money(row.budget)}</strong></div>
+        <div className="summary-card"><span>Comprado no mês</span><strong>{money(row.bought)}</strong></div>
+        <div className="summary-card"><span>Disponível no mês</span><strong className={row.available < 0 ? "red-text" : "green-text"}>{money(row.available)}</strong></div>
+      </div>
+      <section className="card buyer-detail-chart-card">
+        <div className="card-heading">
+          <div>
+            <h2>Dias de compra — {buyer}</h2>
+            <p>Consumo: <strong className={row.pct > 100 ? "red-text" : "green-text"}>{formatPercent(row.pct)}</strong> · maior volume: dia {peak.day} ({money(peak.value)}).</p>
+          </div>
+          <BarChart3 size={21} />
+        </div>
+        {row.bought > 0 ? (
+          <div className="buyer-evolution-chart">
+            <ChartContainer config={detailConfig} className="buyer-chart-container">
+              <LineChart data={detailData} margin={{ top: 12, right: 18, left: 12, bottom: 4 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} minTickGap={14} />
+                <YAxis tickLine={false} axisLine={false} width={86} tickFormatter={(value) => money(Number(value)).replace(",00", "")} />
+                <ChartTooltip content={<ChartTooltipContent labelFormatter={(label) => `Dia ${String(label).padStart(2, "0")}`} formatter={(value) => <strong>{money(Number(value))}</strong>} />} />
+                <Line type="monotone" dataKey="value" name={buyer} stroke={`var(--color-${buyer})`} strokeWidth={2.8} dot={false} activeDot={{ r: 5 }} />
+                {peak.value > 0 && <ReferenceDot x={peak.day} y={peak.value} r={7} fill={buyerChartConfig[buyer].color} stroke="#fff" strokeWidth={2} />}
+              </LineChart>
+            </ChartContainer>
+          </div>
+        ) : (
+          <div className="empty">Nenhuma compra importada para {buyer} neste mês.</div>
+        )}
+      </section>
     </section>
   );
 }
