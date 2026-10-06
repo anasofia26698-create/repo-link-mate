@@ -143,7 +143,7 @@ export async function replaceImportedEntries(input: {
   const comparisonSummary = input.entries.reduce((rows, entry) => {
     const previousCents = previousByDate.get(entry.date) ?? 0;
     const increaseCents = entry.debitCents - previousCents;
-    if (increaseCents > 500000) rows.push({ date: entry.date, previousCents, currentCents: entry.debitCents, increaseCents });
+    if (increaseCents > 0) rows.push({ date: entry.date, previousCents, currentCents: entry.debitCents, increaseCents });
     return rows;
   }, [] as { date: string; previousCents: number; currentCents: number; increaseCents: number }[]);
   if (automaticRecovery.length || comparisonSummary.length) {
@@ -451,7 +451,7 @@ export async function importComparison(): Promise<ImportComparison> {
       pct: summary!.pct,
       budgetCents: summary!.budgetCents,
     }));
-  const increases = Array.from(dates)
+  const increases = previous ? Array.from(dates)
     .map((date) => {
       const previousDebitCents = previousValues.get(date) ?? 0;
       const currentDebitCents = currentValues.get(date) ?? 0;
@@ -470,7 +470,7 @@ export async function importComparison(): Promise<ImportComparison> {
       };
     })
     .filter((row) => row.increaseCents > 0)
-    .sort((a, b) => b.increaseCents - a.increaseCents);
+    .sort((a, b) => b.increaseCents - a.increaseCents) : [];
 
   const monthlyBudgets = budgetMonths.map((month) => {
     const budgetCents = AUDIT_PURCHASE_BUDGETS[month] ?? 0;
