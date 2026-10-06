@@ -349,8 +349,8 @@ export type ImportComparison = {
 
 const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
 
-/** Lê todo o histórico permanente e calcula os aumentos entre importações consecutivas. */
-export async function importComparison(thresholdCents = 500000): Promise<ImportComparison> {
+/** Lê todo o histórico permanente e calcula as diferenças entre as duas últimas importações. */
+export async function importComparison(): Promise<ImportComparison> {
   const { data, error } = await supabaseAdmin
     .from("cash_flow_import_runs")
     .select("id,file_name,entry_count,period_start,period_end,total_debit_cents,created_at")
@@ -451,7 +451,6 @@ export async function importComparison(thresholdCents = 500000): Promise<ImportC
       pct: summary!.pct,
       budgetCents: summary!.budgetCents,
     }));
-  const threshold = thresholdCents;
   const increases = Array.from(dates)
     .map((date) => {
       const previousDebitCents = previousValues.get(date) ?? 0;
@@ -470,7 +469,7 @@ export async function importComparison(thresholdCents = 500000): Promise<ImportC
         history,
       };
     })
-    .filter((row) => row.increaseCents > threshold)
+    .filter((row) => row.increaseCents !== 0)
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const monthlyBudgets = budgetMonths.map((month) => {
