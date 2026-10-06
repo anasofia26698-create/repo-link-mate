@@ -19,6 +19,7 @@ export type BuyerGoalConfig = {
   period: string;
   buyer: string;
   salesCents: number;
+  monthlyCents: number;
   cmvPercent: number;
   ips: string[];
 };
@@ -33,7 +34,15 @@ export async function listBuyerGoalConfigs(period?: string): Promise<BuyerGoalCo
   if (period) query = query.eq("period", period);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ period: row.period as string, buyer: row.buyer as string, salesCents: Number(row.sales_cents), cmvPercent: Number(row.cmv_percent), ips: Array.isArray(row.ips) ? row.ips as string[] : [] }));
+  const budgets = await listBuyerBudgets();
+  return (data ?? []).map((row) => ({
+    period: row.period as string,
+    buyer: row.buyer as string,
+    salesCents: Number(row.sales_cents),
+    monthlyCents: budgets.find((budget) => budget.period === row.period && budget.buyer === row.buyer)?.monthlyCents ?? Math.round(Number(row.sales_cents) * 0.6),
+    cmvPercent: Number(row.cmv_percent),
+    ips: Array.isArray(row.ips) ? row.ips as string[] : [],
+  }));
 }
 
 export async function saveBuyerGoalConfig(input: BuyerGoalConfig): Promise<BuyerGoalConfig[]> {
@@ -44,6 +53,7 @@ export async function saveBuyerGoalConfig(input: BuyerGoalConfig): Promise<Buyer
     { onConflict: "period,buyer" },
   );
   if (error) throw new Error(error.message);
+  await saveBuyerBudget({ period: input.period, buyer: input.buyer, monthlyCents: input.monthlyCents });
   const existing = await listBuyerIps();
   for (const item of existing.filter((item) => item.buyer === input.buyer && !ips.includes(item.ipAddress))) await removeBuyerIp(item.id);
   for (const ip of ips) await saveBuyerIp({ ipAddress: ip, buyer: input.buyer });
