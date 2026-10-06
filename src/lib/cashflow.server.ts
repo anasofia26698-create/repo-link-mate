@@ -469,8 +469,8 @@ export async function importComparison(): Promise<ImportComparison> {
         history,
       };
     })
-    .filter((row) => row.increaseCents !== 0)
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .filter((row) => row.increaseCents > 0)
+    .sort((a, b) => b.increaseCents - a.increaseCents);
 
   const monthlyBudgets = budgetMonths.map((month) => {
     const budgetCents = AUDIT_PURCHASE_BUDGETS[month] ?? 0;
