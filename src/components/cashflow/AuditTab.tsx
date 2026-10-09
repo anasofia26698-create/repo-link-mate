@@ -39,6 +39,7 @@ function formatAuditDetail(type: string, value: string | null) {
             `${item.termDays} dias → ${dateBR(item.paymentDate)} · ${item.canBuy ? "pode comprar" : "não pode comprar"} · meta ${money(item.limitCents / 100)}`,
         )
         .join(" | ")}`;
+    if (type === "simulation" && details.budgetAdjustment?.message) return details.budgetAdjustment.message;
     if (type === "import" && details.mappedColumns)
       return `Arquivo: ${details.fileName || "não informado"} · Colunas: ${Object.values(details.mappedColumns).join(" / ")} · Período: ${dateBR(details.periodStart)} a ${dateBR(details.periodEnd)} · Total: ${money(details.totalDebitCents / 100)}`;
     return null;

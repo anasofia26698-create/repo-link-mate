@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalConfig } from "@/lib/buyer.functions";
+import { applyProportionalBudgetReduction, getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalConfig } from "@/lib/buyer.functions";
 import { listCashFlow } from "@/lib/cashflow.functions";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
@@ -219,9 +219,11 @@ function BuyerGoalsForm() {
 
 
 export function PurchasesDashboardTab() {
+  const queryClient = useQueryClient();
   const currentPeriod = new Date().toISOString().slice(0, 7);
   const [period, setPeriod] = useState(currentPeriod);
   const [selectedBuyer, setSelectedBuyer] = useState<(typeof BUYERS)[number] | null>(null);
+  const [novemberReductionAttempted, setNovemberReductionAttempted] = useState(false);
   const [snapshots, setSnapshots] = useState<Record<string, number>>(readMonthlySnapshots);
   const overview = useQuery({
     queryKey: ["buyer-monthly-overview"],
@@ -276,6 +278,15 @@ export function PurchasesDashboardTab() {
   useEffect(() => {
     if (typeof window !== "undefined") window.localStorage.setItem(MONTHLY_TOTAL_SNAPSHOTS_KEY, JSON.stringify(snapshots));
   }, [snapshots]);
+  useEffect(() => {
+    if (period !== "2026-11" || overview.isLoading || novemberReductionAttempted || !(overview.data?.budgets ?? []).some((budget) => budget.period === "2026-11")) return;
+    setNovemberReductionAttempted(true);
+    applyProportionalBudgetReduction({ data: { period: "2026-11", reductionCents: 30_000_000 } }).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] });
+    }).catch(() => {
+      setNovemberReductionAttempted(false);
+    });
+  }, [novemberReductionAttempted, overview.data?.budgets, overview.isLoading, period, queryClient]);
   const chartData = useMemo(() => {
     const [year = "", month = ""] = period.split("-");
     const daysInMonth = new Date(Number(year), Number(month), 0).getDate();

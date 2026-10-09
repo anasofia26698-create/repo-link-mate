@@ -203,3 +203,55 @@ export async function saveBuyerBudget(input: { period: string; buyer: string; mo
   if (error) throw new Error(error.message);
   return listBuyerBudgets();
 }
+
+export async function applyProportionalBudgetReduction(input: { period: string; reductionCents: number }): Promise<BuyerBudget[]> {
+  const reductionCents = Math.max(0, Math.round(input.reductionCents));
+  const existingEvents = await supabaseAdmin.from("audit_events").select("details").eq("event_type", "simulation").limit(500);
+  if (existingEvents.error) throw new Error(existingEvents.error.message);
+  const alreadyApplied = (existingEvents.data ?? []).some((row) => {
+    try {
+      const details = typeof row.details === "string" ? JSON.parse(row.details) as { budgetAdjustment?: { period?: string; reductionCents?: number } } : null;
+      return details?.budgetAdjustment?.period === input.period && details.budgetAdjustment.reductionCents === reductionCents;
+    } catch {
+      return false;
+    }
+  });
+  const allBudgets = await listBuyerBudgets();
+  const budgets = allBudgets.filter((budget) => budget.period === input.period);
+  if (alreadyApplied || budgets.length === 0 || reductionCents === 0) return allBudgets;
+  const totalCents = budgets.reduce((sum, budget) => sum + budget.monthlyCents, 0);
+  const effectiveReduction = Math.min(reductionCents, Math.max(0, totalCents - budgets.length));
+  if (effectiveReduction === 0) return allBudgets;
+  const shares = budgets.map((budget) => ({
+    ...budget,
+    exactReduction: budget.monthlyCents * effectiveReduction / totalCents,
+    reductionCents: Math.floor(budget.monthlyCents * effectiveReduction / totalCents),
+  }));
+  let remainder = effectiveReduction - shares.reduce((sum, share) => sum + share.reductionCents, 0);
+  shares.sort((a, b) => (b.exactReduction - Math.floor(b.exactReduction)) - (a.exactReduction - Math.floor(a.exactReduction)));
+  for (const share of shares) {
+    if (remainder <= 0) break;
+    if (share.reductionCents < share.monthlyCents - 1) {
+      share.reductionCents += 1;
+      remainder -= 1;
+    }
+  }
+  const updated = shares.map((share) => ({ period: share.period, buyer: share.buyer, monthlyCents: share.monthlyCents - share.reductionCents }));
+  for (const budget of updated) await saveBuyerBudget(budget);
+  const periodLabel = input.period === "2026-11" ? "novembro/2026" : input.period;
+  const { error: auditError } = await supabaseAdmin.from("audit_events").insert({
+    event_type: "simulation",
+    route: "/dashboard-compras",
+    entry_count: 0,
+    details: JSON.stringify({
+      budgetAdjustment: {
+        period: input.period,
+        reductionCents: effectiveReduction,
+        message: `Redução de orçamento ${periodLabel}: −R$ ${(effectiveReduction / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} (proporcional entre compradores — apenas Dashboard de Compras)`,
+        buyers: updated.map((budget) => ({ buyer: budget.buyer, monthlyCents: budget.monthlyCents })),
+      },
+    }),
+  });
+  if (auditError) throw new Error(auditError.message);
+  return listBuyerBudgets();
+}

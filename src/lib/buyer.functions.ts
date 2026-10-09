@@ -131,6 +131,13 @@ export const saveBuyerGoalConfig = createServerFn({ method: "POST" })
     return saveBuyerGoalConfig(data);
   });
 
+export const applyProportionalBudgetReduction = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), reductionCents: z.number().int().positive() }).parse(data))
+  .handler(async ({ data }) => {
+    const { applyProportionalBudgetReduction: applyReduction } = await import("./buyer.server");
+    return applyReduction(data);
+  });
+
 export const getLineGoals = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
   .handler(async ({ data }) => {
