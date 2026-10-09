@@ -15,7 +15,7 @@ import {
   OCTOBER_TIGHTENING_FACTOR,
   OCTOBER_TIGHTENING_THRESHOLD,
 } from "@/lib/simulationRules";
-import { confirmPurchases, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
+import { confirmPurchases, getOctoberAccounting, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
 import { AuditTab } from "@/components/cashflow/AuditTab";
 import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
 import { ImportTab } from "@/components/cashflow/ImportTab";
@@ -32,6 +32,8 @@ export const Route = createFileRoute("/")({
           "Simule compras futuras, importe a planilha de débitos e acompanhe metas e auditoria do fluxo de caixa das 14 lojas.",
       },
       { property: "og:title", content: "Fluxo de Caixa — Contas a pagar" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
       {
         property: "og:description",
         content: "Simulação de compras, importação de planilhas, metas por setor e auditoria de acessos.",
@@ -91,6 +93,12 @@ function HomePage() {
     refetchInterval: 300_000,
     refetchIntervalInBackground: true,
   });
+  const octoberAccounting = useQuery({
+    queryKey: ["october-accounting"],
+    queryFn: () => getOctoberAccounting(),
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: true,
+  });
 
   const toEntry = (entry: { id: number; date: string; debitCents: number; source: "imported" | "manual"; createdAt: string }): Entry => ({
     id: String(entry.id),
@@ -119,8 +127,9 @@ function HomePage() {
     activeEntries.forEach((entry) =>
       groups.set(entry.date, (groups.get(entry.date) || 0) + Math.round(Number(entry.debit || 0) * 100)),
     );
-    return getOctoberBudgetExceededCents(groups);
-  }, [activeEntries]);
+    const octoberTotal = octoberAccounting.data?.totalCents ?? 226511799;
+    return Math.max(getOctoberBudgetExceededCents(groups), getOctoberBudgetExceededCents(new Map([["2026-10-01", octoberTotal]])));
+  }, [activeEntries, octoberAccounting.data]);
   const octoberBudgetBlocked = octoberBudgetExceededCents > 0;
 
   const grouped = useMemo(() => {
@@ -307,7 +316,10 @@ function HomePage() {
             onSuccess: async (shared) => {
               setEntries(shared.map(toEntry));
               setImportSummary({ count: imported.length, start: dates[0]!, end: dates[dates.length - 1]!, total: totalDebitCents / 100 });
-              await queryClient.invalidateQueries({ queryKey: ["cash-flow-entries"] });
+              await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ["cash-flow-entries"] }),
+                queryClient.invalidateQueries({ queryKey: ["october-accounting"] }),
+              ]);
               toast.success(`${imported.length} lançamentos importados e compartilhados. A planilha agora é a fonte central do fluxo.`);
             },
             onError: () => toast.error("Não foi possível atualizar o fluxo compartilhado."),

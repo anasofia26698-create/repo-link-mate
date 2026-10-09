@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
 const entrySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -30,6 +32,25 @@ function requestActor(actorName?: string) {
 export const listCashFlow = createServerFn({ method: "GET" }).handler(async () => {
   const { listSharedEntries } = await import("./cashflow.server");
   return listSharedEntries();
+});
+
+export const getOctoberAccounting = createServerFn({ method: "GET" }).handler(async () => {
+  const key = process.env["SUPABASE_PUBLISHABLE_KEY"];
+  const url = process.env["SUPABASE_URL"];
+  if (!key || !url) throw new Error("Não foi possível carregar os totais de outubro.");
+  const client = createClient<Database>(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: (input, init) => {
+      const headers = new Headers(init?.headers);
+      if (key.startsWith("sb_") && headers.get("Authorization") === `Bearer ${key}`) headers.delete("Authorization");
+      headers.set("apikey", key);
+      return fetch(input, { ...init, headers });
+    } },
+  });
+  const { data, error } = await client.from("purchase_month_accounting")
+    .select("total_cents,paid_cents,open_cents").eq("period", "2026-10").single();
+  if (error) throw new Error("Não foi possível carregar os totais de outubro.");
+  return { totalCents: Number(data.total_cents), paidCents: Number(data.paid_cents), openCents: Number(data.open_cents) };
 });
 
 export const recordAccess = createServerFn({ method: "POST" }).handler(async () => {
