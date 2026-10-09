@@ -79,6 +79,7 @@ const emptyMonthlyConfig = (): MonthlyBuyerConfig => ({ sales: "", cmv: "60", al
 const monthLabel = (period: string) => { const [year, month] = period.split("-"); return year && month ? `${month}/${year}` : period; };
 const MONTHLY_TOTAL_SNAPSHOTS_KEY = "signal-cash-monthly-payable-snapshots-v1";
 const SEPTEMBER_MONTHLY_TOTAL = { total: 2723875.38, paid: 2031741.5, open: 692133.88 };
+const OCTOBER_MONTHLY_TOTAL = { total: 2265117.99, paid: 329145.14, open: 1935972.85 };
 
 function readMonthlySnapshots(): Record<string, number> {
   try {
@@ -262,9 +263,17 @@ export function PurchasesDashboardTab() {
   const observedPayable = (sharedFlow.data ?? [])
     .filter((item) => item.source === "imported" && item.date.slice(0, 7) === period)
     .reduce((total, item) => total + item.debitCents, 0) / 100;
-  const totalPayable = period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.total : Math.max(observedPayable, snapshots[period] ?? 0);
+  const totalPayable = period === "2026-09"
+    ? SEPTEMBER_MONTHLY_TOTAL.total
+    : period === "2026-10"
+      ? Math.max(OCTOBER_MONTHLY_TOTAL.total, observedPayable, snapshots[period] ?? 0)
+      : Math.max(observedPayable, snapshots[period] ?? 0);
   const paid = period === "2026-09"
     ? SEPTEMBER_MONTHLY_TOTAL.paid
+    : period === "2026-10"
+      ? Math.max(OCTOBER_MONTHLY_TOTAL.paid, (overview.data?.payments ?? [])
+          .filter((item) => item.source === "confirmed" && item.date.slice(0, 7) === period)
+          .reduce((total, item) => total + item.amountCents, 0) / 100)
     : (overview.data?.payments ?? [])
         .filter((item) => item.source === "confirmed" && item.date.slice(0, 7) === period)
         .reduce((total, item) => total + item.amountCents, 0) / 100;
