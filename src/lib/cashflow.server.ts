@@ -127,6 +127,16 @@ export async function replaceImportedEntries(input: {
     if (error) throw new Error(error.message);
   }
 
+  // The principal sheet contains remaining obligations, not settled payments.
+  // Only an import containing October may update its shared accounting.
+  const octoberEntries = input.entries.filter((entry) => entry.date.startsWith("2026-10"));
+  if (octoberEntries.length) {
+    const { error } = await supabaseAdmin.rpc("update_october_accounting", {
+      in_open_cents: octoberEntries.reduce((sum, entry) => sum + entry.debitCents, 0),
+    });
+    if (error) throw new Error(error.message);
+  }
+
   const recoveryByDate = new Map<string, number>();
   for (const entry of entriesToInsert) recoveryByDate.set(entry.date, (recoveryByDate.get(entry.date) ?? 0) + entry.debit_cents);
   const automaticRecovery = ["2026-11", "2026-12", "2027-01", "2027-02"]

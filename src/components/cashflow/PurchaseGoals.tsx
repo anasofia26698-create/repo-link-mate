@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { applyProportionalBudgetReduction, getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalConfig } from "@/lib/buyer.functions";
-import { listCashFlow } from "@/lib/cashflow.functions";
+import { getOctoberAccounting, listCashFlow } from "@/lib/cashflow.functions";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 
@@ -237,6 +237,12 @@ export function PurchasesDashboardTab() {
     refetchInterval: 300_000,
     refetchIntervalInBackground: true,
   });
+  const octoberAccounting = useQuery({
+    queryKey: ["october-accounting"],
+    queryFn: () => getOctoberAccounting(),
+    refetchInterval: 300_000,
+    refetchIntervalInBackground: true,
+  });
   const periods = useMemo(() => {
     const fixed = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01"];
     const imported = (overview.data?.payments ?? []).map((item) => item.date.slice(0, 7));
@@ -262,17 +268,18 @@ export function PurchasesDashboardTab() {
   const observedPayable = (sharedFlow.data ?? [])
     .filter((item) => item.source === "imported" && item.date.slice(0, 7) === period)
     .reduce((total, item) => total + item.debitCents, 0) / 100;
-  const totalPayable = period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.total : Math.max(observedPayable, snapshots[period] ?? 0);
-  const paid = period === "2026-09"
+  const october = octoberAccounting.data;
+  const totalPayable = period === "2026-10" ? (october?.totalCents ?? 226511799) / 100 : period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.total : Math.max(observedPayable, snapshots[period] ?? 0);
+  const paid = period === "2026-10" ? (october?.paidCents ?? 32914514) / 100 : period === "2026-09"
     ? SEPTEMBER_MONTHLY_TOTAL.paid
     : (overview.data?.payments ?? [])
         .filter((item) => item.source === "confirmed" && item.date.slice(0, 7) === period)
         .reduce((total, item) => total + item.amountCents, 0) / 100;
-  const open = period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.open : Math.max(0, totalPayable - paid);
+  const open = period === "2026-10" ? (october?.openCents ?? 193597285) / 100 : period === "2026-09" ? SEPTEMBER_MONTHLY_TOTAL.open : Math.max(0, totalPayable - paid);
   const balance = totalBudget - totalPayable;
   const consumption = totalBudget > 0 ? totalPayable / totalBudget * 100 : totalPayable > 0 ? 100 : 0;
   useEffect(() => {
-    if (period === "2026-09" || !sharedFlow.data || observedPayable <= (snapshots[period] ?? 0)) return;
+    if (period === "2026-09" || period === "2026-10" || !sharedFlow.data || observedPayable <= (snapshots[period] ?? 0)) return;
     setSnapshots((current) => ({ ...current, [period]: observedPayable }));
   }, [observedPayable, period, sharedFlow.data, snapshots]);
   useEffect(() => {
@@ -319,6 +326,7 @@ export function PurchasesDashboardTab() {
           </select>
         </label>
       </div>
+      {period === "2026-10" && octoberAccounting.isError && <p role="alert">Não foi possível atualizar os totais de outubro. Exibindo os valores iniciais informados.</p>}
       {selectedBuyer ? (
         <BuyerDetailView
           buyer={selectedBuyer}
