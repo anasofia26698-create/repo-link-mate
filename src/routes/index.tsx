@@ -73,6 +73,7 @@ function HomePage() {
   const [tab, setTab] = useState<Tab>("fluxo");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [today, setToday] = useState(iso(new Date()));
+  const [displayToday, setDisplayToday] = useState(() => iso(new Date()));
   const [purchaseInput, setPurchaseInput] = useState("48.000,00");
   const [termsInput, setTermsInput] = useState("30, 60, 90");
   const [simulationMode, setSimulationMode] = useState<"terms" | "dates">("terms");
@@ -103,6 +104,13 @@ function HomePage() {
   useEffect(() => {
     if (sharedFlow.data) setEntries(sharedFlow.data.map(toEntry));
   }, [sharedFlow.data]);
+
+  useEffect(() => {
+    const refreshDisplayDate = () => setDisplayToday(iso(new Date()));
+    const timer = window.setInterval(refreshDisplayDate, 60_000);
+    refreshDisplayDate();
+    return () => window.clearInterval(timer);
+  }, []);
 
 
   useEffect(() => {
@@ -150,6 +158,7 @@ function HomePage() {
         };
       });
   }, [activeEntries, octoberTighteningFactor, octoberBudgetBlocked, octoberBudgetExceededCents]);
+  const visibleGrouped = useMemo(() => grouped.filter((row) => row.date >= displayToday), [displayToday, grouped]);
 
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
@@ -555,10 +564,10 @@ function HomePage() {
                   </div>
                 </div>
                 <div className="timeline-list">
-                  {grouped.map((row) => (
+                  {visibleGrouped.map((row) => (
                     <div className="timeline-row" key={row.date}>
                       <div className="timeline-label">
-                        <strong>{dateBR(row.date)}</strong>
+                        <strong>{dateBR(row.date)}{row.date === displayToday ? " · HOJE" : ""}</strong>
                         <span>{row.critical || row.weekday}</span>
                       </div>
                       <div className="timeline-track">
@@ -573,7 +582,7 @@ function HomePage() {
                       </div>
                     </div>
                   ))}
-                  {!grouped.length && (
+                  {!visibleGrouped.length && (
                     <div className="empty">Nenhum débito importado. Acesse “Importar Planilha” para começar.</div>
                   )}
                 </div>
