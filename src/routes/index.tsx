@@ -32,6 +32,8 @@ export const Route = createFileRoute("/")({
           "Simule compras futuras, importe a planilha de débitos e acompanhe metas e auditoria do fluxo de caixa das 14 lojas.",
       },
       { property: "og:title", content: "Fluxo de Caixa — Contas a pagar" },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
       {
         property: "og:description",
         content: "Simulação de compras, importação de planilhas, metas por setor e auditoria de acessos.",
