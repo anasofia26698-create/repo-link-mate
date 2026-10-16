@@ -155,8 +155,16 @@ export const saveLineGoals = createServerFn({ method: "POST" })
 /** Visão mensal pública do módulo, usada pelo Dashboard de Compras. */
 export const getBuyerMonthlyOverview = createServerFn({ method: "GET" }).handler(async () => {
   const server = await import("./buyer.server");
-  const [payments, budgets] = await Promise.all([server.listBuyerPayments(), server.listBuyerBudgets()]);
-  return { payments, budgets };
+  const [payments, budgets, goalConfigs] = await Promise.all([
+    server.listBuyerPayments(),
+    server.listBuyerBudgets(),
+    server.listBuyerGoalConfigs(),
+  ]);
+  const persistedKeys = new Set(budgets.map((budget) => `${budget.period}:${budget.buyer}`));
+  const fallbackBudgets = goalConfigs
+    .filter((config) => !persistedKeys.has(`${config.period}:${config.buyer}`))
+    .map((config) => ({ period: config.period, buyer: config.buyer, monthlyCents: config.monthlyCents }));
+  return { payments, budgets: [...budgets, ...fallbackBudgets] };
 });
 
 /** Confirmação de compra do comprador: entra no fluxo e expira em 7 dias. */
