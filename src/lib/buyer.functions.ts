@@ -138,6 +138,12 @@ export const applyProportionalBudgetReduction = createServerFn({ method: "POST" 
     return applyReduction(data);
   });
 
+export const repairNovemberDashboardBudgets = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const { repairNovemberDashboardBudgets: repair } = await import("./buyer.server");
+    return repair();
+  });
+
 export const getLineGoals = createServerFn({ method: "GET" })
   .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
   .handler(async ({ data }) => {

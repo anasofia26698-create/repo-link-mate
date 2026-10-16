@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { applyProportionalBudgetReduction, getBuyerGoalConfigs, getBuyerMonthlyOverview, saveBuyerGoalConfig } from "@/lib/buyer.functions";
+import { getBuyerGoalConfigs, getBuyerMonthlyOverview, repairNovemberDashboardBudgets, saveBuyerGoalConfig } from "@/lib/buyer.functions";
 import { listCashFlow } from "@/lib/cashflow.functions";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
@@ -290,7 +290,7 @@ export function PurchasesDashboardTab() {
   useEffect(() => {
     if (period !== "2026-11" || overview.isLoading || novemberReductionAttempted || !(overview.data?.budgets ?? []).some((budget) => budget.period === "2026-11")) return;
     setNovemberReductionAttempted(true);
-    applyProportionalBudgetReduction({ data: { period: "2026-11", reductionCents: 30_000_000 } }).then(() => {
+    repairNovemberDashboardBudgets().then(() => {
       queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] });
     }).catch(() => {
       setNovemberReductionAttempted(false);

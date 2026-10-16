@@ -210,7 +210,7 @@ export async function applyProportionalBudgetReduction(input: { period: string; 
   if (existingEvents.error) throw new Error(existingEvents.error.message);
   const alreadyApplied = (existingEvents.data ?? []).some((row) => {
     try {
-      const details = typeof row.details === "string" ? JSON.parse(row.details) as { budgetAdjustment?: { period?: string; reductionCents?: number } } : null;
+      const details = (typeof row.details === "string" ? JSON.parse(row.details) : row.details) as { budgetAdjustment?: { period?: string; reductionCents?: number } } | null;
       return details?.budgetAdjustment?.period === input.period && details.budgetAdjustment.reductionCents === reductionCents;
     } catch {
       return false;
@@ -253,5 +253,18 @@ export async function applyProportionalBudgetReduction(input: { period: string; 
     }),
   });
   if (auditError) throw new Error(auditError.message);
+  return listBuyerBudgets();
+}
+
+export async function repairNovemberDashboardBudgets(): Promise<BuyerBudget[]> {
+  const target = [
+    { period: "2026-11", buyer: "Marcelo", monthlyCents: 72_333_333 },
+    { period: "2026-11", buyer: "Maurício", monthlyCents: 56_833_333 },
+    { period: "2026-11", buyer: "Suellen", monthlyCents: 56_833_334 },
+  ];
+  const current = (await listBuyerBudgets()).filter((budget) => budget.period === "2026-11");
+  if (target.some((expected) => current.find((actual) => actual.buyer === expected.buyer)?.monthlyCents !== expected.monthlyCents)) {
+    for (const budget of target) await saveBuyerBudget(budget);
+  }
   return listBuyerBudgets();
 }
