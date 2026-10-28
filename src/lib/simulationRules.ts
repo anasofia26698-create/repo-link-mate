@@ -4,7 +4,7 @@ export const WEEKDAY_AVERAGE_SALES = [87000, 124000, 124000, 124000, 123000, 127
 export const WEEKDAY_NAMES = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"] as const;
 export const CRITICAL_PAYMENT_DAYS = [5, 10, 15, 20, 25] as const;
 /** Configuração fixa de gestão: não é derivada nem alterada por importações. */
-export const PURCHASE_RATIO = 0.549;
+export const PURCHASE_RATIO = 0.60;
 export const REDUCED_FLOW_START_DATE = "2026-09-01";
 export const REDUCED_FLOW_END_DATE = "2026-10-31";
 export const FROZEN_FLOW_START_DATE = "2026-09-01";
@@ -12,6 +12,101 @@ export const FROZEN_FLOW_END_DATE = "2026-09-30";
 export const OCTOBER_TIGHTENING_FACTOR = 0.1184;
 export const OCTOBER_TIGHTENING_THRESHOLD = 10000;
 export const OCTOBER_BASE_BUDGET_CENTS = 198260300;
+export const MONTHLY_PURCHASE_BUDGETS_CENTS: Readonly<Record<string, number>> = {
+  "2026-09": 190684100,
+  "2026-10": 198260300,
+  "2026-11": 189146900,
+  "2026-12": 197436800,
+  "2027-01": 196558400,
+  "2027-02": 175261300,
+};
+
+export function getMonthlyPurchaseBudgetCents(month: string): number {
+  const configured = MONTHLY_PURCHASE_BUDGETS_CENTS[month];
+  if (configured !== undefined) return configured;
+  const [yearText = "0", monthText = "0"] = month.split("-");
+  const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const date = `${month}-${String(index + 1).padStart(2, "0")}`;
+    return Math.round(getPurchaseLimitForDate(date).limit * 100);
+  }).reduce((total, value) => total + value, 0);
+}
+
+export type MonthlyPurchaseDay = {
+  date: string;
+  debitCents: number;
+  goalCents: number;
+  freeCents: number;
+  limitCents: number;
+  totalDebitCents: number;
+  budgetCents: number;
+  remainingBudgetCents: number;
+  goalFreeCents: number;
+  monthBlocked: boolean;
+  frozen: boolean;
+};
+
+export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMap<string, number>): MonthlyPurchaseDay {
+  const month = date.slice(0, 7);
+  const budgetCents = getMonthlyPurchaseBudgetCents(month);
+  const [yearText = "0", monthText = "0"] = month.split("-");
+  const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
+  let totalDebitCents = 0;
+  let goalFreeCents = 0;
+  const goals = new Map<string, number>();
+  const targetFreeByDate = new Map<string, number>();
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const currentDate = `${month}-${String(day).padStart(2, "0")}`;
+    const goalCents = Math.round(getPurchaseLimitForDate(currentDate).limit * 100);
+    const debitCents = debitByDateCents.get(currentDate) ?? 0;
+    goals.set(currentDate, goalCents);
+    totalDebitCents += debitCents;
+    const targetFreeCents = Math.max(0, goalCents - debitCents);
+    targetFreeByDate.set(currentDate, targetFreeCents);
+    goalFreeCents += targetFreeCents;
+  }
+  const remainingBudgetCents = Math.max(0, budgetCents - totalDebitCents);
+  const scale = goalFreeCents > 0 ? Math.min(1, remainingBudgetCents / goalFreeCents) : 0;
+  const targetDateGoalCents = goals.get(date) ?? Math.round(getPurchaseLimitForDate(date).limit * 100);
+  const targetDebitCents = debitByDateCents.get(date) ?? 0;
+  const monthBlocked = month === "2026-09" || (month === "2026-10" && totalDebitCents > budgetCents);
+  const allocationTargetCents = monthBlocked ? 0 : Math.min(remainingBudgetCents, goalFreeCents);
+  const allocatedFreeByDate = new Map<string, number>();
+  let allocatedCents = 0;
+  const fractionalDays: { date: string; fraction: number }[] = [];
+  for (const [currentDate, targetFreeCents] of targetFreeByDate) {
+    const exact = targetFreeCents * scale;
+    const floored = Math.min(targetFreeCents, Math.floor(exact));
+    allocatedFreeByDate.set(currentDate, floored);
+    allocatedCents += floored;
+    fractionalDays.push({ date: currentDate, fraction: exact - Math.floor(exact) });
+  }
+  let remainderCents = allocationTargetCents - allocatedCents;
+  fractionalDays.sort((a, b) => b.fraction - a.fraction);
+  for (const item of fractionalDays) {
+    if (remainderCents <= 0) break;
+    const current = allocatedFreeByDate.get(item.date) ?? 0;
+    const cap = targetFreeByDate.get(item.date) ?? 0;
+    if (current < cap) {
+      allocatedFreeByDate.set(item.date, current + 1);
+      remainderCents -= 1;
+    }
+  }
+  const freeCents = allocatedFreeByDate.get(date) ?? 0;
+  return {
+    date,
+    debitCents: targetDebitCents,
+    goalCents: targetDateGoalCents,
+    freeCents,
+    limitCents: targetDebitCents + freeCents,
+    totalDebitCents,
+    budgetCents,
+    remainingBudgetCents,
+    goalFreeCents,
+    monthBlocked,
+    frozen: isFrozenFlowDate(date),
+  };
+}
 
 export function getOctoberBudgetExceededCents(debitByDateCents: ReadonlyMap<string, number>): number {
   const totalDebitCents = Array.from(debitByDateCents.entries())
