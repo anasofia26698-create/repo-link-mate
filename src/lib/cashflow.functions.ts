@@ -43,6 +43,11 @@ export const listCashFlowMonthBudgets = createServerFn({ method: "GET" }).handle
   return list();
 });
 
+export const listAuditPurchaseBudgets = createServerFn({ method: "GET" }).handler(async () => {
+  const { listAuditPurchaseBudgets: list } = await import("./cashflow.server");
+  return list();
+});
+
 export const saveCashFlowMonthBudget = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({ month: z.string().regex(/^\d{4}-\d{2}$/), budgetCents: z.number().int().min(0) }).parse(data))
   .handler(async ({ data }) => {

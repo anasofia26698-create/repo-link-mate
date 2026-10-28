@@ -347,7 +347,21 @@ export type ImportComparison = {
   }[];
 };
 
-const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
+export const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"] as const;
+export const AUDIT_PURCHASE_BUDGETS: Readonly<Record<string, number>> = {
+  "2026-09": 190684100,
+  "2026-10": 198260300,
+  "2026-11": 189146900,
+  "2026-12": 197436800,
+  "2027-01": 196558400,
+  "2027-02": 175261300,
+};
+
+export function listAuditPurchaseBudgets() {
+  return AUDIT_MONTHS
+    .filter((month) => AUDIT_PURCHASE_BUDGETS[month] !== undefined)
+    .map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month]! }));
+}
 
 export type CashFlowMonthBudget = { month: string; budgetCents: number };
 
@@ -389,14 +403,6 @@ export async function importComparison(): Promise<ImportComparison> {
     createdAt: row.created_at as string,
   }));
   const budgetMonths = AUDIT_MONTHS;
-  const AUDIT_PURCHASE_BUDGETS: Record<string, number> = {
-    "2026-09": 190684100,
-    "2026-10": 198260300,
-    "2026-11": 189146900,
-    "2026-12": 197436800,
-    "2027-01": 196558400,
-    "2027-02": 175261300,
-  };
   const emptyMonthlyBudgets = budgetMonths.map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month] ?? 0, totalDebitCents: 0, availableCents: 0, exceededCents: 0, hasImport: false, blocked: month === "2026-09", budgetBlocked: false, budgetExceededCents: 0 }));
   if (!runs.length) {
     return {
