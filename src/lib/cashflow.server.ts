@@ -349,6 +349,27 @@ export type ImportComparison = {
 
 const AUDIT_MONTHS = ["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"];
 
+export type CashFlowMonthBudget = { month: string; budgetCents: number };
+
+export async function listCashFlowMonthBudgets(): Promise<CashFlowMonthBudget[]> {
+  const { data, error } = await supabaseAdmin
+    .from("cash_flow_month_budgets")
+    .select("month,budget_cents")
+    .order("month", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: Number(row.budget_cents) }));
+}
+
+export async function saveCashFlowMonthBudget(month: string, budgetCents: number): Promise<CashFlowMonthBudget> {
+  const { data, error } = await supabaseAdmin
+    .from("cash_flow_month_budgets")
+    .upsert({ month, budget_cents: budgetCents }, { onConflict: "month" })
+    .select("month,budget_cents")
+    .single();
+  if (error) throw new Error(error.message);
+  return { month: String(data.month), budgetCents: Number(data.budget_cents) };
+}
+
 /** Lê todo o histórico permanente e calcula as diferenças entre as duas últimas importações. */
 export async function importComparison(): Promise<ImportComparison> {
   const { data, error } = await supabaseAdmin

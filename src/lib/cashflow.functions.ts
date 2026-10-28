@@ -38,6 +38,18 @@ export const recordAccess = createServerFn({ method: "POST" }).handler(async () 
   return { ok: true };
 });
 
+export const listCashFlowMonthBudgets = createServerFn({ method: "GET" }).handler(async () => {
+  const { listCashFlowMonthBudgets: list } = await import("./cashflow.server");
+  return list();
+});
+
+export const saveCashFlowMonthBudget = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ month: z.string().regex(/^\d{4}-\d{2}$/), budgetCents: z.number().int().min(0) }).parse(data))
+  .handler(async ({ data }) => {
+    const { saveCashFlowMonthBudget: save } = await import("./cashflow.server");
+    return save(data.month, data.budgetCents);
+  });
+
 export const replaceImport = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
     z

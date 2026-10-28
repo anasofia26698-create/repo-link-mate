@@ -43,12 +43,14 @@ export type MonthlyPurchaseDay = {
   remainingBudgetCents: number;
   goalFreeCents: number;
   monthBlocked: boolean;
+  budgetConfigured: boolean;
   frozen: boolean;
 };
 
-export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMap<string, number>): MonthlyPurchaseDay {
+export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMap<string, number>, configuredBudgets?: ReadonlyMap<string, number>): MonthlyPurchaseDay {
   const month = date.slice(0, 7);
-  const budgetCents = getMonthlyPurchaseBudgetCents(month);
+  const budgetConfigured = configuredBudgets ? configuredBudgets.has(month) : true;
+  const budgetCents = configuredBudgets ? configuredBudgets.get(month) ?? 0 : getMonthlyPurchaseBudgetCents(month);
   const [yearText = "0", monthText = "0"] = month.split("-");
   const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
   let totalDebitCents = 0;
@@ -69,7 +71,7 @@ export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMa
   const scale = goalFreeCents > 0 ? Math.min(1, remainingBudgetCents / goalFreeCents) : 0;
   const targetDateGoalCents = goals.get(date) ?? Math.round(getPurchaseLimitForDate(date).limit * 100);
   const targetDebitCents = debitByDateCents.get(date) ?? 0;
-  const monthBlocked = month === "2026-09" || (month === "2026-10" && totalDebitCents > budgetCents);
+  const monthBlocked = !budgetConfigured || month === "2026-09" || (month === "2026-10" && totalDebitCents > budgetCents);
   const allocationTargetCents = monthBlocked ? 0 : Math.min(remainingBudgetCents, goalFreeCents);
   const allocatedFreeByDate = new Map<string, number>();
   let allocatedCents = 0;
@@ -104,6 +106,7 @@ export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMa
     remainingBudgetCents,
     goalFreeCents,
     monthBlocked,
+    budgetConfigured,
     frozen: isFrozenFlowDate(date),
   };
 }

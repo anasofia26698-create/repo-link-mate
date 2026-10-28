@@ -42,6 +42,10 @@
 .simulation-panel .scenario-list { margin:18px 20px 20px; }
 .critical-below { margin-bottom:16px; }
 .simple-app .page-heading-compact { margin-bottom:20px; }
+.period-control { display:flex; align-items:flex-end; flex-wrap:wrap; justify-content:flex-end; gap:10px; margin-left:auto; }
+.period-control label { display:grid; gap:5px; color:#56606b; font-size:12px; font-weight:700; }
+.period-control input,.period-control select { min-width:150px; padding:9px 10px; border:1px solid #d5d9df; border-radius:6px; background:#fff; color:#20262d; font:inherit; }
+.timeline-fill.fill-muted { background:#b8bec6; }
 .simple-app .page-heading-compact .subheading { font-size:15px; }
 .simple-app .simulator-large h2, .simple-app .simulation-panel h2, .simple-app .critical-card h2, .simple-app .timeline-card h2 { font-size:22px; }
 .simple-app .simulator-large p, .simple-app .simulation-panel p, .simple-app .critical-card p, .simple-app .timeline-card p { font-size:15px; }
