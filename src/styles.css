@@ -64,6 +64,10 @@
 .buyer-reconciliation-audit-kpis .summary-card strong { font-size:18px; }
 .buyer-flow-chart-card { margin-bottom:16px; }
 .buyer-flow-chart { width:100%; min-height:330px; padding:12px 20px 18px; }
+.december-allocation-note { display:grid; gap:6px; margin-bottom:16px; border-left:4px solid #d39e00; background:#fffaf0; }
+.december-allocation-note strong { color:#5f4500; }
+.december-allocation-note span { font-weight:600; }
+.december-allocation-note small { color:#6b7280; }
 @media (max-width:900px) { .buyer-reconciliation-audit-kpis { grid-template-columns:1fr; } }
 @media (max-width:600px) { .buyer-flow-chart { padding:8px 8px 14px; } }
 .buyer-flow-table-wrap { padding:0 20px 20px; }

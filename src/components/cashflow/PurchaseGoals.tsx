@@ -80,6 +80,7 @@ const monthLabel = (period: string) => { const [year, month] = period.split("-")
 const MONTHLY_TOTAL_SNAPSHOTS_KEY = "signal-cash-monthly-payable-snapshots-v1";
 const SEPTEMBER_MONTHLY_TOTAL = { total: 2723875.38, paid: 2031741.5, open: 692133.88 };
 const OCTOBER_MONTHLY_TOTAL = { total: 2265117.99, paid: 329145.14, open: 1935972.85 };
+const DECEMBER_ALLOCATION_BASE = { salesCents: 329061333, allocationCents: 197436800 };
 
 function readMonthlySnapshots(): Record<string, number> {
   try {
@@ -195,6 +196,11 @@ function BuyerGoalsForm() {
         <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
         <button className="btn btn-dark" onClick={save} disabled={saving || goalConfigs.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</button>
       </div>
+      {period === "2026-12" && <section className="card december-allocation-note">
+        <strong>Dotação oficial de dezembro/2026</strong>
+        <span>Venda-base cadastrada: {money(DECEMBER_ALLOCATION_BASE.salesCents / 100)} · fórmula: 60% · dotação total: {money(DECEMBER_ALLOCATION_BASE.allocationCents / 100)}</span>
+        <small>Participações congeladas da base de novembro: Marcelo 40,61% · Suellen 32,54% · Maurício 26,86%. A soma das dotações dos compradores fecha exatamente o total do mês.</small>
+      </section>}
       <div style={{ display: "block" }}>
         <section className="card goals-card">
           <div className="card-heading"><div><h2>Meta por comprador</h2><p>Venda mensal, CMV informativo e IPs vinculados.</p></div></div>
