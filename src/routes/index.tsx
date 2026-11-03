@@ -215,8 +215,6 @@ function HomePage() {
     });
   }, [buyerBudgetRows, configuredBudgetMap, grouped, selectedFlowMonth]);
   const buyerMonthMismatch = Math.abs(buyerBudgetRows.reconciliationCents - buyerBudgetRows.rawMonthBalanceCents) > 100 || buyerBudgetRows.debtsWithoutBuyerCents < 0;
-  const buyerCanShowDailyFree = !buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents > 0 && buyerBudgetRows.positiveTotal > 0;
-  const buyerDailyRowsToShow = buyerDailyRows.filter((row) => row.allocations.some((item) => item.cents > 0));
   const buyerPurchaseChart = useMemo(() => {
     const [yearText, monthText] = selectedFlowMonth.split("-");
     const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
@@ -661,35 +659,6 @@ function HomePage() {
               )}
               {!buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents > 0 && buyerBudgetRows.positiveTotal === 0 && (
                 <p className="alert alert-red buyer-flow-alert">Nenhum comprador com saldo para distribuir a folga.</p>
-              )}
-              {buyerCanShowDailyFree && (
-                <div className="table-wrap buyer-flow-table-wrap">
-                  <table className="buyer-flow-table">
-                    <thead>
-                      <tr>
-                        <th>Data</th>
-                        <th>Dia da semana</th>
-                        {BUYERS.map((buyer) => <th className="right" key={buyer}>Folga — {buyer}</th>)}
-                        <th className="right">Total do dia</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {buyerDailyRowsToShow.map((row) => (
-                        <tr key={row.date}>
-                          <td>{dateBR(row.date)}</td>
-                          <td>{row.weekday}</td>
-                          {row.allocations.map((allocation) => <td className="right green-text" key={allocation.buyer}>{money(allocation.cents / 100)}</td>)}
-                          <td className="right"><strong>{money(row.allocations.reduce((total, item) => total + item.cents, 0) / 100)}</strong></td>
-                        </tr>
-                      ))}
-                      <tr className="buyer-flow-total-row">
-                        <td colSpan={2}><strong>Total</strong></td>
-                        {BUYERS.map((buyer) => <td className="right" key={buyer}><strong>{money(buyerDailyRows.reduce((total, row) => total + (row.allocations.find((item) => item.buyer === buyer)?.cents ?? 0), 0) / 100)}</strong></td>)}
-                        <td className="right"><strong>{money(buyerDailyRows.reduce((total, row) => total + row.allocations.reduce((dayTotal, item) => dayTotal + item.cents, 0), 0) / 100)}</strong></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
               )}
             </section>
             <section className="card buyer-flow-chart-card">
