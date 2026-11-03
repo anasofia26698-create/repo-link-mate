@@ -275,24 +275,6 @@ export type Database = {
           },
         ]
       }
-      cash_flow_month_budgets: {
-        Row: {
-          budget_cents: number
-          month: string
-          updated_at: string
-        }
-        Insert: {
-          budget_cents: number
-          month: string
-          updated_at?: string
-        }
-        Update: {
-          budget_cents?: number
-          month?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       known_ip_users: {
         Row: {
           created_at: string
