@@ -186,6 +186,7 @@ export async function replaceImportedEntries(input: {
 
 export async function confirmPurchaseEntries(input: {
   entries: { date: string; debitCents: number; termDays?: number | undefined }[];
+  buyer: string;
   actor: Actor;
 }): Promise<SharedEntry[]> {
   const totalCents = input.entries.reduce((sum, entry) => sum + entry.debitCents, 0);
@@ -195,6 +196,7 @@ export async function confirmPurchaseEntries(input: {
     entryCount: input.entries.length,
     details: {
       totalCents,
+      buyer: input.buyer,
       installments: input.entries.map((entry) => ({
         date: entry.date,
         debitCents: entry.debitCents,
@@ -214,6 +216,17 @@ export async function confirmPurchaseEntries(input: {
     );
     if (error) throw new Error(error.message);
   }
+
+  const { error: buyerError } = await supabaseAdmin.from("buyer_payments").insert(
+    input.entries.map((entry) => ({
+      due_date: entry.date,
+      buyer: input.buyer,
+      amount_cents: entry.debitCents,
+      source: "confirmed",
+      import_batch: `cash-flow-confirmation-${auditEventId}`,
+    })),
+  );
+  if (buyerError) throw new Error(buyerError.message);
 
   return listSharedEntries();
 }

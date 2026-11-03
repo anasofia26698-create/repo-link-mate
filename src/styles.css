@@ -46,6 +46,19 @@
 .period-control label { display:grid; gap:5px; color:#56606b; font-size:12px; font-weight:700; }
 .period-control input,.period-control select { min-width:150px; padding:9px 10px; border:1px solid #d5d9df; border-radius:6px; background:#fff; color:#20262d; font:inherit; }
 .timeline-fill.fill-muted { background:#b8bec6; }
+.buyer-flow-budget-card { margin-bottom:16px; }
+.buyer-flow-kpis { grid-template-columns:repeat(3,1fr); margin:0; padding:18px 20px 0; }
+.buyer-flow-kpis .summary-card { display:grid; gap:6px; }
+.buyer-flow-kpis .summary-card span { margin-bottom:0; font-weight:700; color:#20262d; }
+.buyer-flow-kpis .summary-card small { color:#6b7280; font-size:13px; }
+.buyer-flow-kpis .summary-card strong { font-size:18px; }
+.buyer-days-toggle { display:flex; align-items:center; gap:7px; white-space:nowrap; }
+.buyer-days-toggle input { width:16px; height:16px; }
+.buyer-flow-alert { margin:0 20px 16px; }
+.buyer-flow-table-wrap { padding:0 20px 20px; }
+.buyer-flow-table { min-width:900px; }
+.buyer-flow-total-row td { background:#fafafa; border-top:2px solid #dfe2e6; }
+@media (max-width:900px) { .buyer-flow-kpis { grid-template-columns:1fr; } }
 .simple-app .page-heading-compact .subheading { font-size:15px; }
 .simple-app .simulator-large h2, .simple-app .simulation-panel h2, .simple-app .critical-card h2, .simple-app .timeline-card h2 { font-size:22px; }
 .simple-app .simulator-large p, .simple-app .simulation-panel p, .simple-app .critical-card p, .simple-app .timeline-card p { font-size:15px; }

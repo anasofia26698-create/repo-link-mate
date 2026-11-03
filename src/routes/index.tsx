@@ -16,7 +16,9 @@ import {
   OCTOBER_TIGHTENING_FACTOR,
   OCTOBER_TIGHTENING_THRESHOLD,
 } from "@/lib/simulationRules";
+import { BUYERS } from "@/lib/buyerRules";
 import { confirmPurchases, listAuditPurchaseBudgets, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
+import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
 import { AuditTab } from "@/components/cashflow/AuditTab";
 import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
 import { ImportTab } from "@/components/cashflow/ImportTab";
@@ -79,6 +81,8 @@ function HomePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [today, setToday] = useState(iso(new Date()));
   const [selectedFlowMonth, setSelectedFlowMonth] = useState("2026-11");
+  const [showAllBuyerDays, setShowAllBuyerDays] = useState(false);
+  const [responsibleBuyer, setResponsibleBuyer] = useState<(typeof BUYERS)[number] | "">("");
   const [displayToday, setDisplayToday] = useState(() => iso(new Date()));
   const [purchaseInput, setPurchaseInput] = useState("48.000,00");
   const [termsInput, setTermsInput] = useState("30, 60, 90");
@@ -99,6 +103,7 @@ function HomePage() {
     refetchIntervalInBackground: true,
   });
   const auditBudgets = useQuery({ queryKey: ["audit-purchase-budgets"], queryFn: () => listAuditPurchaseBudgets() });
+  const buyerOverview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
 
   const toEntry = (entry: { id: number; date: string; debitCents: number; source: "imported" | "manual"; createdAt: string }): Entry => ({
     id: String(entry.id),
@@ -174,6 +179,36 @@ function HomePage() {
     activeEntries.forEach((entry) => debitByDateCents.set(entry.date, (debitByDateCents.get(entry.date) ?? 0) + Math.round(entry.debit * 100)));
     return getMonthlyPurchaseDay(`${selectedFlowMonth}-01`, debitByDateCents, configuredBudgetMap);
   }, [activeEntries, configuredBudgetMap, selectedFlowMonth]);
+  const buyerBudgetRows = useMemo(() => {
+    const rows = BUYERS.map((buyer) => {
+      const budget = buyerOverview.data?.budgets.find((item) => item.period === selectedFlowMonth && item.buyer === buyer)?.monthlyCents ?? 0;
+      const bought = buyerOverview.data?.payments
+        .filter((item) => item.date.startsWith(selectedFlowMonth) && item.buyer === buyer)
+        .reduce((total, item) => total + item.amountCents, 0) ?? 0;
+      return { buyer, budgetCents: budget, boughtCents: bought, balanceCents: budget - bought };
+    });
+    const positiveTotal = rows.reduce((total, row) => total + Math.max(0, row.balanceCents), 0);
+    return { rows, positiveTotal, sumBalanceCents: rows.reduce((total, row) => total + row.balanceCents, 0) };
+  }, [buyerOverview.data, selectedFlowMonth]);
+  const buyerDailyRows = useMemo(() => {
+    const [yearText, monthText] = selectedFlowMonth.split("-");
+    const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
+    const debitByDateCents = new Map(grouped.map((row) => [row.date, Math.round(row.debit * 100)]));
+    return Array.from({ length: daysInMonth }, (_, index) => {
+      const date = `${selectedFlowMonth}-${String(index + 1).padStart(2, "0")}`;
+      const day = getMonthlyPurchaseDay(date, debitByDateCents, configuredBudgetMap);
+      const shares = new Map(buyerBudgetRows.rows.map((row) => [row.buyer, buyerBudgetRows.positiveTotal > 0 ? Math.max(0, row.balanceCents) / buyerBudgetRows.positiveTotal : 0]));
+      let allocated = 0;
+      const allocations = BUYERS.map((buyer, index) => {
+        const cents = index === BUYERS.length - 1 ? Math.max(0, day.freeCents - allocated) : Math.min(day.freeCents, Math.round(day.freeCents * (shares.get(buyer) ?? 0)));
+        allocated += cents;
+        return { buyer, cents };
+      });
+      return { date, weekday: getPurchaseLimitForDate(date).weekday, freeCents: day.freeCents, allocations };
+    });
+  }, [buyerBudgetRows, configuredBudgetMap, grouped, selectedFlowMonth]);
+  const buyerMonthMismatch = Math.abs(buyerBudgetRows.sumBalanceCents - monthlyBudgetSummary.remainingBudgetCents) > 100;
+  const buyerDailyRowsToShow = showAllBuyerDays ? buyerDailyRows : buyerDailyRows.filter((row) => row.allocations.some((item) => item.cents > 0));
 
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
@@ -213,6 +248,10 @@ function HomePage() {
       toast.error("Informe seu nome para confirmar a compra.");
       return;
     }
+    if (!responsibleBuyer) {
+      toast.error("Selecione o comprador responsável pela compra.");
+      return;
+    }
     if (selected.some((scenario) => scenario.isFrozen)) {
       toast.error("Compra bloqueada: o fluxo de setembro de 2026 está congelado.");
       return;
@@ -237,6 +276,7 @@ function HomePage() {
         data: {
           entries: selected.map((scenario) => ({ date: scenario.date, debitCents: Math.round(scenario.installment * 100), termDays: scenario.term })),
           actorName: responsible,
+          buyer: responsibleBuyer,
         },
       },
       {
@@ -245,6 +285,7 @@ function HomePage() {
           setShowConfirm(false);
           setSelectedTerms([]);
           setActorName("");
+          setResponsibleBuyer("");
           setSimulated(false);
           toast.success("Compra confirmada. O fluxo compartilhado foi atualizado.");
         },
@@ -564,6 +605,67 @@ function HomePage() {
               {!monthlyBudgetSummary.budgetConfigured ? <p className="muted"><strong>Orçamento do mês não encontrado na Auditoria de Compras.</strong> Nenhum livre é calculado.</p> : monthlyBudgetSummary.totalDebitCents > monthlyBudgetSummary.budgetCents && <p className="red-text"><strong>Orçamento do mês ultrapassado em {money((monthlyBudgetSummary.totalDebitCents - monthlyBudgetSummary.budgetCents) / 100)}.</strong> Todos os livres foram zerados.</p>}
               <p className="muted">Conferência: folga diária total {money(grouped.filter((row) => row.date.startsWith(monthlyBudgetSummary.date.slice(0, 7))).reduce((sum, row) => sum + row.monthlyDay.freeCents, 0) / 100)} de um máximo mensal de {money(Math.min(monthlyBudgetSummary.remainingBudgetCents, monthlyBudgetSummary.goalFreeCents) / 100)}.</p>
             </section>
+            <section className="card buyer-flow-budget-card">
+              <div className="card-heading">
+                <div>
+                  <h2>Orçamento de compra por comprador — {FLOW_MONTH_LABELS[selectedFlowMonth]}</h2>
+                  <p>A folga diária de cada comprador é proporcional ao seu saldo, sem ultrapassar o saldo mensal.</p>
+                </div>
+                <label className="buyer-days-toggle">
+                  <input type="checkbox" checked={showAllBuyerDays} onChange={(event) => setShowAllBuyerDays(event.target.checked)} />
+                  Ver todos os dias
+                </label>
+              </div>
+              <div className="purchase-kpis buyer-flow-kpis">
+                {buyerBudgetRows.rows.map((row) => (
+                  <div className="summary-card" key={row.buyer}>
+                    <span>{row.buyer}</span>
+                    <small>Orçamento: {money(row.budgetCents / 100)}</small>
+                    <small>Compras: {money(row.boughtCents / 100)}</small>
+                    <strong className={row.balanceCents >= 0 ? "green-text" : "red-text"}>
+                      {row.balanceCents >= 0 ? `Saldo ${money(row.balanceCents / 100)}` : `Estourou em ${money(Math.abs(row.balanceCents) / 100)}`}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+              {buyerMonthMismatch && (
+                <p className="alert alert-red buyer-flow-alert">
+                  Compras do Dashboard não batem com os débitos importados. A soma dos saldos dos compradores é {money(buyerBudgetRows.sumBalanceCents / 100)} e o saldo do mês é {money(monthlyBudgetSummary.remainingBudgetCents / 100)}. As folgas por comprador não foram exibidas.
+                </p>
+              )}
+              {!buyerMonthMismatch && buyerBudgetRows.positiveTotal === 0 && monthlyBudgetSummary.remainingBudgetCents > 0 && (
+                <p className="alert alert-red buyer-flow-alert">Nenhum comprador com saldo para distribuir a folga.</p>
+              )}
+              {!buyerMonthMismatch && buyerBudgetRows.positiveTotal > 0 && (
+                <div className="table-wrap buyer-flow-table-wrap">
+                  <table className="buyer-flow-table">
+                    <thead>
+                      <tr>
+                        <th>Data</th>
+                        <th>Dia da semana</th>
+                        {BUYERS.map((buyer) => <th className="right" key={buyer}>Folga — {buyer}</th>)}
+                        <th className="right">Total do dia</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {buyerDailyRowsToShow.map((row) => (
+                        <tr key={row.date}>
+                          <td>{dateBR(row.date)}</td>
+                          <td>{row.weekday}</td>
+                          {row.allocations.map((allocation) => <td className="right green-text" key={allocation.buyer}>{money(allocation.cents / 100)}</td>)}
+                          <td className="right"><strong>{money(row.allocations.reduce((total, item) => total + item.cents, 0) / 100)}</strong></td>
+                        </tr>
+                      ))}
+                      <tr className="buyer-flow-total-row">
+                        <td colSpan={2}><strong>Total</strong></td>
+                        {BUYERS.map((buyer) => <td className="right" key={buyer}><strong>{money(buyerDailyRows.reduce((total, row) => total + (row.allocations.find((item) => item.buyer === buyer)?.cents ?? 0), 0) / 100)}</strong></td>)}
+                        <td className="right"><strong>{money(buyerDailyRows.reduce((total, row) => total + row.allocations.reduce((dayTotal, item) => dayTotal + item.cents, 0), 0) / 100)}</strong></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
             <div className="flow-columns">
               <section className="card critical-card critical-below">
                 <div className="card-heading">
@@ -665,6 +767,13 @@ function HomePage() {
             <label className="audit-name-field">
               Seu nome
               <input value={actorName} onChange={(event) => setActorName(event.target.value)} placeholder="Quem está confirmando esta compra?" />
+            </label>
+            <label className="audit-name-field">
+              Comprador responsável
+              <select value={responsibleBuyer} onChange={(event) => setResponsibleBuyer(event.target.value as (typeof BUYERS)[number] | "")}>
+                <option value="">Selecione o comprador</option>
+                {BUYERS.map((buyer) => <option value={buyer} key={buyer}>{buyer}</option>)}
+              </select>
             </label>
             <div className="confirmation-terms">
               {dueDates.map((scenario) => (

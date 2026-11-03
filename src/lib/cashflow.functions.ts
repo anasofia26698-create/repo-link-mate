@@ -83,6 +83,7 @@ export const confirmPurchases = createServerFn({ method: "POST" })
           .min(1)
           .max(60),
         actorName: z.string().max(120).optional(),
+        buyer: z.string().trim().min(1).max(60),
       })
       .parse(data),
   )
@@ -90,6 +91,7 @@ export const confirmPurchases = createServerFn({ method: "POST" })
     const { confirmPurchaseEntries } = await import("./cashflow.server");
     return confirmPurchaseEntries({
       entries: data.entries,
+      buyer: data.buyer,
       actor: requestActor(data.actorName),
     });
   });
