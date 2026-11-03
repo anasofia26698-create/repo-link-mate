@@ -81,7 +81,6 @@ function HomePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [today, setToday] = useState(iso(new Date()));
   const [selectedFlowMonth, setSelectedFlowMonth] = useState("2026-11");
-  const [showAllBuyerDays, setShowAllBuyerDays] = useState(false);
   const [responsibleBuyer, setResponsibleBuyer] = useState<(typeof BUYERS)[number] | "">("");
   const [displayToday, setDisplayToday] = useState(() => iso(new Date()));
   const [purchaseInput, setPurchaseInput] = useState("48.000,00");
@@ -188,8 +187,14 @@ function HomePage() {
       return { buyer, budgetCents: budget, boughtCents: bought, balanceCents: budget - bought };
     });
     const positiveTotal = rows.reduce((total, row) => total + Math.max(0, row.balanceCents), 0);
-    return { rows, positiveTotal, sumBalanceCents: rows.reduce((total, row) => total + row.balanceCents, 0) };
-  }, [buyerOverview.data, selectedFlowMonth]);
+    const buyerBudgetCents = rows.reduce((total, row) => total + row.budgetCents, 0);
+    const buyerBoughtCents = rows.reduce((total, row) => total + row.boughtCents, 0);
+    const unassignedBudgetCents = monthlyBudgetSummary.budgetCents - buyerBudgetCents;
+    const debtsWithoutBuyerCents = monthlyBudgetSummary.totalDebitCents - buyerBoughtCents;
+    const rawMonthBalanceCents = monthlyBudgetSummary.budgetCents - monthlyBudgetSummary.totalDebitCents;
+    const reconciliationCents = rows.reduce((total, row) => total + row.balanceCents, 0) + unassignedBudgetCents - debtsWithoutBuyerCents;
+    return { rows, positiveTotal, buyerBudgetCents, buyerBoughtCents, unassignedBudgetCents, debtsWithoutBuyerCents, rawMonthBalanceCents, reconciliationCents };
+  }, [buyerOverview.data, monthlyBudgetSummary, selectedFlowMonth]);
   const buyerDailyRows = useMemo(() => {
     const [yearText, monthText] = selectedFlowMonth.split("-");
     const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
@@ -207,8 +212,9 @@ function HomePage() {
       return { date, weekday: getPurchaseLimitForDate(date).weekday, freeCents: day.freeCents, allocations };
     });
   }, [buyerBudgetRows, configuredBudgetMap, grouped, selectedFlowMonth]);
-  const buyerMonthMismatch = Math.abs(buyerBudgetRows.sumBalanceCents - monthlyBudgetSummary.remainingBudgetCents) > 100;
-  const buyerDailyRowsToShow = showAllBuyerDays ? buyerDailyRows : buyerDailyRows.filter((row) => row.allocations.some((item) => item.cents > 0));
+  const buyerMonthMismatch = Math.abs(buyerBudgetRows.reconciliationCents - buyerBudgetRows.rawMonthBalanceCents) > 100 || buyerBudgetRows.debtsWithoutBuyerCents < 0;
+  const buyerCanShowDailyFree = !buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents > 0 && buyerBudgetRows.positiveTotal > 0;
+  const buyerDailyRowsToShow = buyerDailyRows.filter((row) => row.allocations.some((item) => item.cents > 0));
 
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
@@ -611,10 +617,6 @@ function HomePage() {
                   <h2>Orçamento de compra por comprador — {FLOW_MONTH_LABELS[selectedFlowMonth]}</h2>
                   <p>A folga diária de cada comprador é proporcional ao seu saldo, sem ultrapassar o saldo mensal.</p>
                 </div>
-                <label className="buyer-days-toggle">
-                  <input type="checkbox" checked={showAllBuyerDays} onChange={(event) => setShowAllBuyerDays(event.target.checked)} />
-                  Ver todos os dias
-                </label>
               </div>
               <div className="purchase-kpis buyer-flow-kpis">
                 {buyerBudgetRows.rows.map((row) => (
@@ -628,15 +630,30 @@ function HomePage() {
                   </div>
                 ))}
               </div>
+              <div className="table-wrap buyer-reconciliation-wrap">
+                <table className="buyer-reconciliation-table">
+                  <thead><tr><th>Reconciliação</th><th className="right">Valor</th></tr></thead>
+                  <tbody>
+                    <tr><td>Total dos saldos dos compradores</td><td className="right">{money(buyerBudgetRows.rows.reduce((total, row) => total + row.balanceCents, 0) / 100)}</td></tr>
+                    <tr><td>Orçamento não atribuído a comprador</td><td className="right">+ {money(buyerBudgetRows.unassignedBudgetCents / 100)}</td></tr>
+                    <tr><td>Débitos sem comprador</td><td className="right">− {money(buyerBudgetRows.debtsWithoutBuyerCents / 100)}</td></tr>
+                    <tr className="buyer-flow-total-row"><td><strong>Saldo do mês (cartão)</strong></td><td className="right"><strong>{money(buyerBudgetRows.rawMonthBalanceCents / 100)}</strong></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="muted buyer-reconciliation-note">Orçamentos dos compradores: {money(buyerBudgetRows.buyerBudgetCents / 100)} de {money(monthlyBudgetSummary.budgetCents / 100)} | Compras no Dashboard: {money(buyerBudgetRows.buyerBoughtCents / 100)} de {money(monthlyBudgetSummary.totalDebitCents / 100)} (sem comprador: {money(buyerBudgetRows.debtsWithoutBuyerCents / 100)})</p>
               {buyerMonthMismatch && (
                 <p className="alert alert-red buyer-flow-alert">
-                  Compras do Dashboard não batem com os débitos importados. A soma dos saldos dos compradores é {money(buyerBudgetRows.sumBalanceCents / 100)} e o saldo do mês é {money(monthlyBudgetSummary.remainingBudgetCents / 100)}. As folgas por comprador não foram exibidas.
+                  {buyerBudgetRows.debtsWithoutBuyerCents < 0 ? "As compras do Dashboard são maiores que os débitos importados." : `A seção não bate com o cartão do mês. Diferença: ${money(Math.abs(buyerBudgetRows.reconciliationCents - buyerBudgetRows.rawMonthBalanceCents) / 100)}.`} As folgas por comprador não foram exibidas.
                 </p>
               )}
-              {!buyerMonthMismatch && buyerBudgetRows.positiveTotal === 0 && monthlyBudgetSummary.remainingBudgetCents > 0 && (
+              {!buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents <= 0 && (
+                <p className="alert alert-red buyer-flow-alert">Sem folga: orçamento do mês ultrapassado.</p>
+              )}
+              {!buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents > 0 && buyerBudgetRows.positiveTotal === 0 && (
                 <p className="alert alert-red buyer-flow-alert">Nenhum comprador com saldo para distribuir a folga.</p>
               )}
-              {!buyerMonthMismatch && buyerBudgetRows.positiveTotal > 0 && (
+              {buyerCanShowDailyFree && (
                 <div className="table-wrap buyer-flow-table-wrap">
                   <table className="buyer-flow-table">
                     <thead>

@@ -52,9 +52,10 @@
 .buyer-flow-kpis .summary-card span { margin-bottom:0; font-weight:700; color:#20262d; }
 .buyer-flow-kpis .summary-card small { color:#6b7280; font-size:13px; }
 .buyer-flow-kpis .summary-card strong { font-size:18px; }
-.buyer-days-toggle { display:flex; align-items:center; gap:7px; white-space:nowrap; }
-.buyer-days-toggle input { width:16px; height:16px; }
 .buyer-flow-alert { margin:0 20px 16px; }
+.buyer-reconciliation-wrap { padding:0 20px; }
+.buyer-reconciliation-table { min-width:620px; }
+.buyer-reconciliation-note { margin:14px 20px 16px; }
 .buyer-flow-table-wrap { padding:0 20px 20px; }
 .buyer-flow-table { min-width:900px; }
 .buyer-flow-total-row td { background:#fafafa; border-top:2px solid #dfe2e6; }
