@@ -56,6 +56,16 @@
 .buyer-reconciliation-wrap { padding:0 20px; }
 .buyer-reconciliation-table { min-width:620px; }
 .buyer-reconciliation-note { margin:14px 20px 16px; }
+.buyer-reconciliation-audit-card { margin-bottom:16px; }
+.buyer-reconciliation-audit-kpis { grid-template-columns:repeat(3,1fr); margin:0; padding:18px 20px 0; }
+.buyer-reconciliation-audit-kpis .summary-card { display:grid; gap:6px; }
+.buyer-reconciliation-audit-kpis .summary-card span { margin-bottom:0; font-weight:700; color:#20262d; }
+.buyer-reconciliation-audit-kpis .summary-card small { color:#6b7280; font-size:13px; }
+.buyer-reconciliation-audit-kpis .summary-card strong { font-size:18px; }
+.buyer-flow-chart-card { margin-bottom:16px; }
+.buyer-flow-chart { width:100%; min-height:330px; padding:12px 20px 18px; }
+@media (max-width:900px) { .buyer-reconciliation-audit-kpis { grid-template-columns:1fr; } }
+@media (max-width:600px) { .buyer-flow-chart { padding:8px 8px 14px; } }
 .buyer-flow-table-wrap { padding:0 20px 20px; }
 .buyer-flow-table { min-width:900px; }
 .buyer-flow-total-row td { background:#fafafa; border-top:2px solid #dfe2e6; }

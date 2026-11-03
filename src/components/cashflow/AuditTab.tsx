@@ -11,6 +11,9 @@ import {
 } from "@/lib/cashflow.functions";
 import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
 import { dateBR, money } from "./format";
+import { BUYERS } from "@/lib/buyerRules";
+import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
+import { listAuditPurchaseBudgets, listCashFlow } from "@/lib/cashflow.functions";
 
 const AUDIT_PASSWORD = "2606";
 
@@ -75,6 +78,7 @@ export function AuditTab() {
   const [editingName, setEditingName] = useState("");
   const [newIp, setNewIp] = useState("");
   const [newName, setNewName] = useState("");
+  const [reconciliationMonth, setReconciliationMonth] = useState("2026-11");
 
   const audit = useQuery({
     queryKey: ["audit-events"],
@@ -95,6 +99,9 @@ export function AuditTab() {
     queryFn: () => listKnownIpUsers({ data: { password: AUDIT_PASSWORD } }),
     enabled: unlocked,
   });
+  const buyerOverview = useQuery({ queryKey: ["audit-buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview(), enabled: unlocked });
+  const auditBudgets = useQuery({ queryKey: ["audit-purchase-budgets"], queryFn: () => listAuditPurchaseBudgets(), enabled: unlocked });
+  const flowEntries = useQuery({ queryKey: ["audit-current-flow-entries"], queryFn: () => listCashFlow(), enabled: unlocked });
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ["audit-events"] });
@@ -180,6 +187,23 @@ export function AuditTab() {
     );
   };
 
+  const reconciliation = (() => {
+    const budgetCents = auditBudgets.data?.find((item) => item.month === reconciliationMonth)?.budgetCents ?? 0;
+    const debitCents = flowEntries.data?.filter((entry) => entry.date.startsWith(reconciliationMonth)).reduce((total, entry) => total + entry.debitCents, 0) ?? 0;
+    const rows = BUYERS.map((buyer) => {
+      const buyerBudget = buyerOverview.data?.budgets.find((item) => item.period === reconciliationMonth && item.buyer === buyer)?.monthlyCents ?? 0;
+      const bought = buyerOverview.data?.payments.filter((item) => item.date.startsWith(reconciliationMonth) && item.buyer === buyer).reduce((total, item) => total + item.amountCents, 0) ?? 0;
+      return { buyer, budgetCents: buyerBudget, boughtCents: bought, balanceCents: buyerBudget - bought };
+    });
+    const buyerBudgetCents = rows.reduce((total, row) => total + row.budgetCents, 0);
+    const buyerBoughtCents = rows.reduce((total, row) => total + row.boughtCents, 0);
+    const unassignedBudgetCents = budgetCents - buyerBudgetCents;
+    const debtsWithoutBuyerCents = debitCents - buyerBoughtCents;
+    const rawBalanceCents = budgetCents - debitCents;
+    const reconciledCents = rows.reduce((total, row) => total + row.balanceCents, 0) + unassignedBudgetCents - debtsWithoutBuyerCents;
+    return { rows, budgetCents, debitCents, buyerBudgetCents, buyerBoughtCents, unassignedBudgetCents, debtsWithoutBuyerCents, rawBalanceCents, reconciledCents };
+  })();
+
   if (!unlocked)
     return (
       <section className="card access-card">
@@ -216,6 +240,23 @@ export function AuditTab() {
           </p>
         </div>
       </div>
+      <section className="card buyer-reconciliation-audit-card">
+        <div className="card-heading">
+          <div><h2>Reconciliação por comprador — {monthLabel(reconciliationMonth)}</h2><p>Valores comparados entre o Dashboard de Compras, a Importar Planilha e o cartão mensal.</p></div>
+          <label>Período<select value={reconciliationMonth} onChange={(event) => setReconciliationMonth(event.target.value)}>{["2026-09", "2026-10", "2026-11", "2026-12", "2027-01", "2027-02"].map((month) => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></label>
+        </div>
+        <div className="purchase-kpis buyer-reconciliation-audit-kpis">
+          {reconciliation.rows.map((row) => <div className="summary-card" key={row.buyer}><span>{row.buyer}</span><small>Orçamento: {money(row.budgetCents / 100)}</small><small>Compras: {money(row.boughtCents / 100)}</small><strong className={row.balanceCents >= 0 ? "green-text" : "red-text"}>{row.balanceCents >= 0 ? `Saldo ${money(row.balanceCents / 100)}` : `Estourou em ${money(Math.abs(row.balanceCents) / 100)}`}</strong></div>)}
+        </div>
+        <div className="table-wrap buyer-reconciliation-wrap"><table className="buyer-reconciliation-table"><thead><tr><th>Reconciliação</th><th className="right">Valor</th></tr></thead><tbody>
+          <tr><td>Total dos saldos dos compradores</td><td className="right">{money(reconciliation.rows.reduce((total, row) => total + row.balanceCents, 0) / 100)}</td></tr>
+          <tr><td>Orçamento não atribuído a comprador</td><td className="right">+ {money(reconciliation.unassignedBudgetCents / 100)}</td></tr>
+          <tr><td>Débitos sem comprador</td><td className="right">− {money(reconciliation.debtsWithoutBuyerCents / 100)}</td></tr>
+          <tr className="buyer-flow-total-row"><td><strong>Saldo do mês (cartão)</strong></td><td className="right"><strong>{money(reconciliation.rawBalanceCents / 100)}</strong></td></tr>
+        </tbody></table></div>
+        <p className="muted buyer-reconciliation-note">Orçamentos dos compradores: {money(reconciliation.buyerBudgetCents / 100)} de {money(reconciliation.budgetCents / 100)} | Compras no Dashboard: {money(reconciliation.buyerBoughtCents / 100)} de {money(reconciliation.debitCents / 100)} (sem comprador: {money(reconciliation.debtsWithoutBuyerCents / 100)})</p>
+        {(reconciliation.debtsWithoutBuyerCents < 0 || Math.abs(reconciliation.reconciledCents - reconciliation.rawBalanceCents) > 100) && <p className="alert alert-red buyer-flow-alert">{reconciliation.debtsWithoutBuyerCents < 0 ? "As compras do Dashboard são maiores que os débitos importados." : `A seção não bate com o cartão do mês. Diferença: ${money(Math.abs(reconciliation.reconciledCents - reconciliation.rawBalanceCents) / 100)}.`}</p>}
+      </section>
       <div className="audit-columns">
         <section className="card audit-card">
           <div className="card-heading">

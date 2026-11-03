@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
+import { CartesianGrid, Legend, Line, LineChart, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
@@ -52,6 +53,7 @@ type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprad
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
 const FLOW_MONTHS = ["2026-11", "2026-12", "2027-01", "2027-02"] as const;
 const FLOW_MONTH_LABELS: Record<string, string> = { "2026-11": "Novembro/2026", "2026-12": "Dezembro/2026", "2027-01": "Janeiro/2027", "2027-02": "Fevereiro/2027" };
+type BuyerChartPoint = { day: string } & Record<(typeof BUYERS)[number], number>;
 function getTightenedFlowLimit(date: string, debit: number, factor: number) {
   const target = getPurchaseLimitForDate(date);
   if (!date.startsWith("2026-10") || target.isCritical || debit > target.limit) return target;
@@ -215,6 +217,24 @@ function HomePage() {
   const buyerMonthMismatch = Math.abs(buyerBudgetRows.reconciliationCents - buyerBudgetRows.rawMonthBalanceCents) > 100 || buyerBudgetRows.debtsWithoutBuyerCents < 0;
   const buyerCanShowDailyFree = !buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents > 0 && buyerBudgetRows.positiveTotal > 0;
   const buyerDailyRowsToShow = buyerDailyRows.filter((row) => row.allocations.some((item) => item.cents > 0));
+  const buyerPurchaseChart = useMemo(() => {
+    const [yearText, monthText] = selectedFlowMonth.split("-");
+    const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
+    const byDate = new Map<string, Record<string, number>>();
+    for (let day = 1; day <= daysInMonth; day += 1) byDate.set(String(day).padStart(2, "0"), Object.fromEntries(BUYERS.map((buyer) => [buyer, 0])));
+    for (const payment of buyerOverview.data?.payments ?? []) {
+      if (!payment.date.startsWith(selectedFlowMonth)) continue;
+      const day = payment.date.slice(-2);
+      const point = byDate.get(day);
+      if (point && payment.buyer in point) point[payment.buyer] = (point[payment.buyer] ?? 0) + payment.amountCents / 100;
+    }
+    const data = Array.from(byDate.entries()).map(([day, values]) => ({ day, ...values })) as BuyerChartPoint[];
+    const peaks = BUYERS.map((buyer) => {
+      const point = data.reduce((best, current) => Number(current[buyer] ?? 0) > Number(best?.[buyer] ?? 0) ? current : best, data[0]);
+      return { buyer, point, value: Number(point?.[buyer] ?? 0) };
+    });
+    return { data, peaks };
+  }, [buyerOverview.data, selectedFlowMonth]);
 
   const purchase = parseBRL(purchaseInput);
   const terms = parseTerms(termsInput);
@@ -630,17 +650,6 @@ function HomePage() {
                   </div>
                 ))}
               </div>
-              <div className="table-wrap buyer-reconciliation-wrap">
-                <table className="buyer-reconciliation-table">
-                  <thead><tr><th>Reconciliação</th><th className="right">Valor</th></tr></thead>
-                  <tbody>
-                    <tr><td>Total dos saldos dos compradores</td><td className="right">{money(buyerBudgetRows.rows.reduce((total, row) => total + row.balanceCents, 0) / 100)}</td></tr>
-                    <tr><td>Orçamento não atribuído a comprador</td><td className="right">+ {money(buyerBudgetRows.unassignedBudgetCents / 100)}</td></tr>
-                    <tr><td>Débitos sem comprador</td><td className="right">− {money(buyerBudgetRows.debtsWithoutBuyerCents / 100)}</td></tr>
-                    <tr className="buyer-flow-total-row"><td><strong>Saldo do mês (cartão)</strong></td><td className="right"><strong>{money(buyerBudgetRows.rawMonthBalanceCents / 100)}</strong></td></tr>
-                  </tbody>
-                </table>
-              </div>
               <p className="muted buyer-reconciliation-note">Orçamentos dos compradores: {money(buyerBudgetRows.buyerBudgetCents / 100)} de {money(monthlyBudgetSummary.budgetCents / 100)} | Compras no Dashboard: {money(buyerBudgetRows.buyerBoughtCents / 100)} de {money(monthlyBudgetSummary.totalDebitCents / 100)} (sem comprador: {money(buyerBudgetRows.debtsWithoutBuyerCents / 100)})</p>
               {buyerMonthMismatch && (
                 <p className="alert alert-red buyer-flow-alert">
@@ -682,6 +691,24 @@ function HomePage() {
                   </table>
                 </div>
               )}
+            </section>
+            <section className="card buyer-flow-chart-card">
+              <div className="card-heading"><div><h2>Dias de compra por comprador</h2><p>{FLOW_MONTH_LABELS[selectedFlowMonth]} · volume diário de contas a pagar por comprador.</p></div></div>
+              <div className="buyer-flow-chart">
+                <ResponsiveContainer width="100%" height={330}>
+                  <LineChart data={buyerPurchaseChart.data} margin={{ top: 16, right: 20, left: 14, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e8ebee" />
+                    <XAxis dataKey="day" tickLine={false} axisLine={false} interval={0} minTickGap={12} />
+                    <YAxis tickLine={false} axisLine={false} width={82} tickFormatter={(value) => money(Number(value)).replace(",00", "")} />
+                    <Tooltip formatter={(value, name) => [money(Number(value)), String(name)]} labelFormatter={(label) => `Dia ${label}`} />
+                    <Legend verticalAlign="bottom" height={28} />
+                    <Line type="monotone" dataKey="Marcelo" stroke="#176b43" name="Marcelo" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="Suellen" stroke="#2f6da7" name="Suellen" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="Maurício" stroke="#b06a2b" name="Maurício" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                    {buyerPurchaseChart.peaks.map((peak) => peak.point && peak.value > 0 ? <ReferenceDot key={peak.buyer} x={peak.point.day} y={peak.value} r={6} fill={peak.buyer === "Marcelo" ? "#176b43" : peak.buyer === "Suellen" ? "#2f6da7" : "#b06a2b"} stroke="#fff" strokeWidth={2} /> : null)}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </section>
             <div className="flow-columns">
               <section className="card critical-card critical-below">
