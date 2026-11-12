@@ -18,7 +18,9 @@ import {
   OCTOBER_TIGHTENING_THRESHOLD,
 } from "@/lib/simulationRules";
 import { BUYERS } from "@/lib/buyerRules";
-import { confirmPurchases, listAuditPurchaseBudgets, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
+import { FLOW_MONTHS, missingBudgetMessage, parsePurchaseTerms, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "@/lib/purchaseValidation";
+import { Button } from "@/components/ui/button";
+import { confirmPurchases, listCashFlowMonthBudgets, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
 import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
 import { AuditTab } from "@/components/cashflow/AuditTab";
 import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
@@ -51,8 +53,7 @@ type Entry = { id: string; date: string; debit: number; source: "imported" | "ma
 type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
-const FLOW_MONTHS = ["2026-11", "2026-12", "2027-01", "2027-02"] as const;
-const FLOW_MONTH_LABELS: Record<string, string> = { "2026-11": "Novembro/2026", "2026-12": "Dezembro/2026", "2027-01": "Janeiro/2027", "2027-02": "Fevereiro/2027" };
+const FLOW_MONTH_LABELS: Record<string, string> = { "2026-12": "Dezembro/2026", "2027-01": "Janeiro/2027", "2027-02": "Fevereiro/2027", "2027-03": "Março/2027", "2027-04": "Abril/2027", "2027-05": "Maio/2027", "2027-06": "Junho/2027" };
 type BuyerChartPoint = { day: string } & Record<(typeof BUYERS)[number], number>;
 function getTightenedFlowLimit(date: string, debit: number, factor: number) {
   const target = getPurchaseLimitForDate(date);
@@ -82,7 +83,7 @@ function HomePage() {
   const [tab, setTab] = useState<Tab>("fluxo");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [today, setToday] = useState(iso(new Date()));
-  const [selectedFlowMonth, setSelectedFlowMonth] = useState("2026-11");
+  const [selectedFlowMonth, setSelectedFlowMonth] = useState("2026-12");
   const [responsibleBuyer, setResponsibleBuyer] = useState<(typeof BUYERS)[number] | "">("");
   const [displayToday, setDisplayToday] = useState(() => iso(new Date()));
   const [purchaseInput, setPurchaseInput] = useState("48.000,00");
@@ -103,7 +104,7 @@ function HomePage() {
     refetchInterval: 300_000,
     refetchIntervalInBackground: true,
   });
-  const auditBudgets = useQuery({ queryKey: ["audit-purchase-budgets"], queryFn: () => listAuditPurchaseBudgets() });
+  const auditBudgets = useQuery({ queryKey: ["cash-flow-month-budgets"], queryFn: () => listCashFlowMonthBudgets() });
   const buyerOverview = useQuery({ queryKey: ["buyer-monthly-overview"], queryFn: () => getBuyerMonthlyOverview() });
 
   const toEntry = (entry: { id: number; date: string; debitCents: number; source: "imported" | "manual"; createdAt: string }): Entry => ({
@@ -235,7 +236,7 @@ function HomePage() {
   }, [buyerOverview.data, selectedFlowMonth]);
 
   const purchase = parseBRL(purchaseInput);
-  const terms = parseTerms(termsInput);
+  const terms = parsePurchaseTerms(termsInput);
   const paymentDates = parsePaymentDates(paymentDatesInput);
 
   const dueDates = useMemo(() => {
@@ -247,14 +248,17 @@ function HomePage() {
             date.setDate(date.getDate() + term);
             return { term, date: iso(date) };
           });
-    const installment = parsed.length ? purchase / parsed.length : 0;
-    return parsed.map(({ term, date }) => {
+    const installmentAmounts = splitInstallmentCents(Math.round(purchase * 100), parsed.length);
+    return parsed.map(({ term, date }, index) => {
+      const installmentCents = installmentAmounts[index] ?? 0;
+      const installment = installmentCents / 100;
       const existing = grouped.find((row) => row.date === date)?.debit || 0;
       const debitByDateCents = new Map(grouped.map((row) => [row.date, Math.round(row.debit * 100)]));
       const target = getTightenedFlowLimit(date, existing, octoberTighteningFactor);
       const monthlyDay = getMonthlyPurchaseDay(date, debitByDateCents, configuredBudgetMap);
-      const canBuy = !monthlyDay.frozen && !monthlyDay.monthBlocked && installment <= monthlyDay.freeCents / 100 && installment <= monthlyDay.remainingBudgetCents / 100;
-      return { term, date, existing, installment, limit: monthlyDay.limitCents / 100, weekday: target.weekday, isCritical: target.isCritical, isFrozen: monthlyDay.frozen, budgetBlocked: monthlyDay.monthBlocked, canBuy };
+      const reason = purchaseRejection(date, installmentCents, debitByDateCents, configuredBudgetMap);
+      const canBuy = reason === null;
+      return { term, date, existing, installment, reason, remainingBudget: monthlyDay.remainingBudgetCents / 100, limit: monthlyDay.limitCents / 100, weekday: target.weekday, isCritical: target.isCritical, isFrozen: monthlyDay.frozen, budgetBlocked: monthlyDay.monthBlocked, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, configuredBudgetMap, octoberTighteningFactor, octoberBudgetBlocked]);
 
@@ -282,7 +286,7 @@ function HomePage() {
     }
     const unavailableDay = selected.find((scenario) => !scenario.canBuy);
     if (unavailableDay) {
-      toast.error(`NÃO PODE COMPRAR: a parcela de ${dateBR(unavailableDay.date)} excede o limite do dia ou o saldo do mês.`);
+      toast.error(unavailableDay.reason ?? "NÃO PODE COMPRAR");
       return;
     }
     const installmentsByMonth = new Map<string, number>();
@@ -312,19 +316,38 @@ function HomePage() {
           setResponsibleBuyer("");
           setSimulated(false);
           toast.success("Compra confirmada. O fluxo compartilhado foi atualizado.");
+          void queryClient.invalidateQueries();
         },
-        onError: () => toast.error("Não foi possível confirmar a compra."),
+        onError: (error) => toast.error(error instanceof Error ? error.message : "Não foi possível confirmar a compra."),
       },
     );
   };
 
   const simulate = () => {
+    if (purchase <= 0 || !Number.isFinite(purchase)) {
+      toast.error("Valor total da compra deve ser maior que zero");
+      return;
+    }
+    if (simulationMode === "terms") {
+      const error = termError(terms);
+      if (error) { toast.error(error); return; }
+    }
+    if (simulationMode === "dates" && paymentDatesInput.split(/[;,]+/).filter((value) => value.trim()).length !== paymentDates.length) {
+      toast.error("Informe datas válidas no formato DD/MM/AAAA");
+      return;
+    }
     if (simulationMode === "dates" && !paymentDates.length) {
       toast.error("Informe pelo menos uma data no formato DD/MM/AAAA.");
       return;
     }
     if (simulationMode === "terms" && !terms.length) {
       toast.error("Informe pelo menos um prazo em dias.");
+      return;
+    }
+    const invalidDate = dueDates.map((scenario) => paymentDateError(scenario.date)).find(Boolean);
+    if (invalidDate) { toast.error(invalidDate); return; }
+    if (dueDates.some((scenario) => scenario.installment < 0.01)) {
+      toast.error("Valor da parcela muito baixo: informe um valor total maior");
       return;
     }
     setSimulated(true);
@@ -535,9 +558,9 @@ function HomePage() {
                     </label>
                   )}
                 </div>
-                <button className="btn btn-primary full" onClick={simulate}>
+                <Button className="btn btn-primary full" onClick={simulate}>
                   Simular compra
-                </button>
+                </Button>
               </aside>
               {simulated && (
                 <section className="card simulation-panel">
@@ -576,9 +599,10 @@ function HomePage() {
                             <strong>{money(scenario.installment)}</strong>
                           </div>
                           <div>
-                            <span>{scenario.isCritical ? "Limite crítico" : "Meta do dia"}</span>
+                            <span>Limite do dia (com folga redistribuída)</span>
                             <strong>{money(scenario.limit)}</strong>
                           </div>
+                          <div><span>Saldo do mês</span><strong>{money(scenario.remainingBudget)}</strong></div>
                         </div>
                         <div className="scenario-alert">
                           <div className="scenario-alert-main">
@@ -592,17 +616,13 @@ function HomePage() {
                             </strong>
                           </div>
                           <div className="scenario-alert-support">
-                            {scenario.isFrozen
-                              ? "Nenhuma compra pode ter vencimento em setembro de 2026."
-                              : scenario.existing <= scenario.limit
-                              ? "Débitos existentes + parcela ficam dentro do limite."
-                              : "Débitos existentes + parcela ultrapassam o limite."}
+                            {scenario.reason ?? "Débitos existentes + parcela ficam dentro do limite do dia e do saldo do mês."}
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                  <button
+                  <Button
                     className="btn btn-dark full confirm-purchase-btn"
                     onClick={() => {
                       setSelectedTerms(dueDates.map((scenario) => scenario.term));
@@ -610,7 +630,7 @@ function HomePage() {
                     }}
                   >
                     Confirmar compra nessas parcelas
-                  </button>
+                  </Button>
                 </section>
               )}
             </div>
@@ -626,7 +646,7 @@ function HomePage() {
                 <div className="summary-card"><span>Total de débitos importados</span><strong>{money(monthlyBudgetSummary.totalDebitCents / 100)}</strong></div>
                 <div className="summary-card"><span>Saldo do orçamento</span><strong className={monthlyBudgetSummary.remainingBudgetCents > 0 ? "green-text" : "red-text"}>{money(monthlyBudgetSummary.remainingBudgetCents / 100)}</strong></div>
               </div>
-              {!monthlyBudgetSummary.budgetConfigured ? <p className="muted"><strong>Orçamento do mês não encontrado na Auditoria de Compras.</strong> Nenhum livre é calculado.</p> : monthlyBudgetSummary.totalDebitCents > monthlyBudgetSummary.budgetCents && <p className="red-text"><strong>Orçamento do mês ultrapassado em {money((monthlyBudgetSummary.totalDebitCents - monthlyBudgetSummary.budgetCents) / 100)}.</strong> Todos os livres foram zerados.</p>}
+              {!monthlyBudgetSummary.budgetConfigured ? <p className="muted"><strong>{missingBudgetMessage(selectedFlowMonth)}</strong></p> : monthlyBudgetSummary.totalDebitCents > monthlyBudgetSummary.budgetCents && <p className="red-text"><strong>Orçamento do mês ultrapassado em {money((monthlyBudgetSummary.totalDebitCents - monthlyBudgetSummary.budgetCents) / 100)}.</strong> Todos os livres foram zerados.</p>}
               <p className="muted">Conferência: folga diária total {money(grouped.filter((row) => row.date.startsWith(monthlyBudgetSummary.date.slice(0, 7))).reduce((sum, row) => sum + row.monthlyDay.freeCents, 0) / 100)} de um máximo mensal de {money(Math.min(monthlyBudgetSummary.remainingBudgetCents, monthlyBudgetSummary.goalFreeCents) / 100)}.</p>
             </section>
             <section className="card buyer-flow-budget-card">

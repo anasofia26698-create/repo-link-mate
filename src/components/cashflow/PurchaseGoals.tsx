@@ -9,6 +9,7 @@ import { getBuyerGoalConfigs, getBuyerMonthlyOverview, repairNovemberDashboardBu
 import { listCashFlow } from "@/lib/cashflow.functions";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
+import { MonthlyPurchasePlan } from "./MonthlyPurchasePlan";
 
 export const SECTORS = [
   "Ético",
@@ -109,6 +110,7 @@ export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: b
         </div>
       </div>
       <BuyerGoalsForm />
+      <MonthlyPurchasePlan />
       <section className="card rules-card">
         <div className="card-heading">
           <div>
