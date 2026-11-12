@@ -10,3 +10,5 @@
 <!-- LOVABLE:END -->
 
 - The Purchases Dashboard combines persisted buyer budgets with imported principal cash-flow totals for its KPIs and imported buyer payments for buyer breakdowns/charts, never browser-local data, so every user sees the same consolidated figures.
+- Cash-flow month availability reads persisted monthly plans, never audit constants; archived participation and buyer allocations are saved atomically so earlier months cannot change future plans.
+- Purchase date, installment and availability validation is shared by the simulator and server; confirmations use a locked database transaction to validate aggregate day/month limits and write cash flow, buyer payments and audit together.

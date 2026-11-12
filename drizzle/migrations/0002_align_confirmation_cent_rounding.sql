@@ -1,0 +1,10 @@
+CREATE OR REPLACE FUNCTION public.purchase_day_available(p_date date,p_remaining bigint,p_all_free bigint) RETURNS bigint LANGUAGE sql STABLE SET search_path=public AS $$
+WITH days AS (SELECT d::date AS date FROM generate_series(date_trunc('month',p_date)::date,(date_trunc('month',p_date)+interval '1 month - 1 day')::date,interval '1 day') d), goals AS (SELECT days.date,CASE WHEN extract(day FROM days.date) IN(5,10,15,20,25) THEN least(5000000,(ARRAY[5220000,7440000,7440000,7440000,7380000,7620000,7980000])[extract(dow FROM days.date)::int+1]) ELSE (ARRAY[5220000,7440000,7440000,7440000,7380000,7620000,7980000])[extract(dow FROM days.date)::int+1] END AS goal,COALESCE((SELECT sum(debit_cents) FROM public.cash_flow_entries c WHERE c.date=days.date AND (source='imported' OR created_at>=now()-interval '7 days')),0) AS debit FROM days), exact AS (SELECT date,greatest(0,goal-debit)*CASE WHEN p_all_free>0 THEN least(1::numeric,p_remaining::numeric/p_all_free) ELSE 0 END AS amount FROM goals), ranked AS (SELECT date,floor(amount)::bigint AS base,row_number() OVER(ORDER BY amount-floor(amount) DESC,date ASC) AS rank,sum(floor(amount)) OVER() AS allocated FROM exact) SELECT COALESCE((SELECT base+CASE WHEN rank<=least(p_remaining,p_all_free)-allocated THEN 1 ELSE 0 END FROM ranked WHERE date=p_date),0)::bigint
+$$;
+REVOKE ALL ON FUNCTION public.purchase_day_available(date,bigint,bigint) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.purchase_day_available(date,bigint,bigint) TO service_role;
+DO $$ DECLARE definition text; BEGIN
+ SELECT pg_get_functiondef('public.confirm_flow_purchase(jsonb,text,jsonb)'::regprocedure) INTO definition;
+ definition:=replace(definition,'allowed:=floor(free_goal*least(1::numeric,remaining::numeric/all_free))','allowed:=public.purchase_day_available(dt,remaining,all_free)');
+ EXECUTE definition;
+END $$;

@@ -8,6 +8,27 @@
       "when": 1793727864613,
       "tag": "0000_cash_flow_month_budgets",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794510123773,
+      "tag": "0001_monthly_purchase_plans_and_atomic_confirmation",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794510293473,
+      "tag": "0002_align_confirmation_cent_rounding",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794510523341,
+      "tag": "0003_qualify_confirmation_daily_totals",
+      "breakpoints": true
     }
   ]
 }

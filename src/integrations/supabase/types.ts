@@ -278,16 +278,19 @@ export type Database = {
       cash_flow_month_budgets: {
         Row: {
           budget_cents: number
+          buyer_participations: Json | null
           month: string
           updated_at: string
         }
         Insert: {
           budget_cents: number
+          buyer_participations?: Json | null
           month: string
           updated_at?: string
         }
         Update: {
           budget_cents?: number
+          buyer_participations?: Json | null
           month?: string
           updated_at?: string
         }
@@ -370,6 +373,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      confirm_flow_purchase: {
+        Args: { p_actor: Json; p_buyer: string; p_entries: Json }
+        Returns: undefined
+      }
+      purchase_day_available: {
+        Args: { p_all_free: number; p_date: string; p_remaining: number }
+        Returns: number
+      }
+      save_purchase_month_plan: {
+        Args: {
+          p_allocations: Json
+          p_budget: number
+          p_month: string
+          p_shares: Json
+        }
+        Returns: undefined
+      }
       update_october_accounting: {
         Args: { in_open_cents: number; in_paid_cents?: number }
         Returns: undefined
