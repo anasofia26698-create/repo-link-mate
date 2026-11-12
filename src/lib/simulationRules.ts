@@ -49,7 +49,7 @@ export type MonthlyPurchaseDay = {
 
 export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMap<string, number>, configuredBudgets?: ReadonlyMap<string, number>): MonthlyPurchaseDay {
   const month = date.slice(0, 7);
-  const budgetConfigured = configuredBudgets ? configuredBudgets.has(month) : true;
+  const budgetConfigured = configuredBudgets ? (configuredBudgets.get(month) ?? 0) > 0 : true;
   const budgetCents = configuredBudgets ? configuredBudgets.get(month) ?? 0 : getMonthlyPurchaseBudgetCents(month);
   const [yearText = "0", monthText = "0"] = month.split("-");
   const daysInMonth = new Date(Date.UTC(Number(yearText), Number(monthText), 0)).getUTCDate();
@@ -77,7 +77,7 @@ export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMa
   let allocatedCents = 0;
   const fractionalDays: { date: string; fraction: number }[] = [];
   for (const [currentDate, targetFreeCents] of targetFreeByDate) {
-    const exact = targetFreeCents * scale;
+    const exact = monthBlocked ? 0 : targetFreeCents * scale;
     const floored = Math.min(targetFreeCents, Math.floor(exact));
     allocatedFreeByDate.set(currentDate, floored);
     allocatedCents += floored;
@@ -210,9 +210,8 @@ export function parsePaymentDates(value: string): PaymentDate[] {
     .map(raw => {
       const match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
       if (!match) return null;
-      const day = match[1]!;
-      const month = match[2]!;
-      const year = match[3]!;
+      const [, day, month, year] = match;
+      if (!day || !month || !year) return null;
       const date = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       const parsed = new Date(`${date}T12:00:00`);
       const validCalendarDate = parsed.getFullYear() === Number(year)
