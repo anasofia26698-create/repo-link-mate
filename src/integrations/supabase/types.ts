@@ -377,6 +377,10 @@ export type Database = {
         Args: { p_actor: Json; p_buyer: string; p_entries: Json }
         Returns: undefined
       }
+      purchase_day_available: {
+        Args: { p_all_free: number; p_date: string; p_remaining: number }
+        Returns: number
+      }
       save_purchase_month_plan: {
         Args: {
           p_allocations: Json
