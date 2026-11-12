@@ -351,7 +351,7 @@ export function listAuditPurchaseBudgets() {
     .map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month]! }));
 }
 
-export type CashFlowMonthBudget = { month: string; budgetCents: number; buyerParticipations?: Record<string, number> };
+export type CashFlowMonthBudget = { month: string; budgetCents: number; buyerParticipations?: Record<string, number> | undefined };
 
 export async function listCashFlowMonthBudgets(): Promise<CashFlowMonthBudget[]> {
   const { data, error } = await supabaseAdmin
