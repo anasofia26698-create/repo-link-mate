@@ -8,6 +8,13 @@
       "when": 1793727864613,
       "tag": "0000_cash_flow_month_budgets",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794510123773,
+      "tag": "0001_monthly_purchase_plans_and_atomic_confirmation",
+      "breakpoints": true
     }
   ]
 }
