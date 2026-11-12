@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
 import { isCriticalDate } from "./buyerRules";
+import { missingBudgetMessage, purchaseRejection } from "./purchaseValidation";
 import { getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
   id: number;
@@ -189,45 +190,19 @@ export async function confirmPurchaseEntries(input: {
   buyer: string;
   actor: Actor;
 }): Promise<SharedEntry[]> {
-  const totalCents = input.entries.reduce((sum, entry) => sum + entry.debitCents, 0);
-  const auditEventId = await insertAuditEvent({
-    eventType: "confirmation",
-    actor: input.actor,
-    entryCount: input.entries.length,
-    details: {
-      totalCents,
-      buyer: input.buyer,
-      installments: input.entries.map((entry) => ({
-        date: entry.date,
-        debitCents: entry.debitCents,
-        termDays: entry.termDays ?? null,
-      })),
-    },
-  });
-
-  if (input.entries.length) {
-    const { error } = await supabaseAdmin.from("cash_flow_entries").insert(
-      input.entries.map((entry) => ({
-        date: entry.date,
-        debit_cents: entry.debitCents,
-        source: "manual",
-        audit_event_id: auditEventId,
-      })),
-    );
-    if (error) throw new Error(error.message);
+  const [rows, plans] = await Promise.all([listSharedEntries(), listCashFlowMonthBudgets()]);
+  const debits = new Map<string, number>();
+  rows.forEach((row) => debits.set(row.date, (debits.get(row.date) ?? 0) + row.debitCents));
+  const budgets = new Map(plans.map((plan) => [plan.month, plan.budgetCents]));
+  for (const entry of input.entries) {
+    const reason = purchaseRejection(entry.date, entry.debitCents, debits, budgets);
+    if (reason) throw new Error(reason);
   }
-
-  const { error: buyerError } = await supabaseAdmin.from("buyer_payments").insert(
-    input.entries.map((entry) => ({
-      due_date: entry.date,
-      buyer: input.buyer,
-      amount_cents: entry.debitCents,
-      source: "confirmed",
-      import_batch: `cash-flow-confirmation-${auditEventId}`,
-    })),
-  );
-  if (buyerError) throw new Error(buyerError.message);
-
+  const { error } = await supabaseAdmin.rpc("confirm_flow_purchase", { p_entries: input.entries, p_buyer: input.buyer, p_actor: input.actor });
+  if (error) {
+    const month = input.entries.find((entry) => error.message.includes(entry.date.slice(0, 7)))?.date.slice(0, 7);
+    throw new Error(month && error.message.startsWith("Orçamento de") ? missingBudgetMessage(month) : error.message);
+  }
   return listSharedEntries();
 }
 
@@ -376,15 +351,15 @@ export function listAuditPurchaseBudgets() {
     .map((month) => ({ month, budgetCents: AUDIT_PURCHASE_BUDGETS[month]! }));
 }
 
-export type CashFlowMonthBudget = { month: string; budgetCents: number };
+export type CashFlowMonthBudget = { month: string; budgetCents: number; buyerParticipations?: Record<string, number> };
 
 export async function listCashFlowMonthBudgets(): Promise<CashFlowMonthBudget[]> {
   const { data, error } = await supabaseAdmin
     .from("cash_flow_month_budgets")
-    .select("month,budget_cents")
+    .select("month,budget_cents,buyer_participations")
     .order("month", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: Number(row.budget_cents) }));
+  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: Number(row.budget_cents), buyerParticipations: row.buyer_participations as Record<string, number> | undefined }));
 }
 
 export async function saveCashFlowMonthBudget(month: string, budgetCents: number): Promise<CashFlowMonthBudget> {

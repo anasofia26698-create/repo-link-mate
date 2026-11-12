@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
+import { allocateBudgetCents, FLOW_MONTHS, paymentDateError } from "./purchaseValidation";
+import { BUYERS } from "./buyerRules";
 
 const entrySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -43,6 +45,23 @@ export const listCashFlowMonthBudgets = createServerFn({ method: "GET" }).handle
   return list();
 });
 
+export const savePurchaseMonthPlan = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string(), month: z.enum(FLOW_MONTHS), budgetCents: z.number().int().positive(), shares: z.array(z.number().nonnegative()).length(3) }).parse(data))
+  .handler(async ({ data }) => {
+    const { isPurchaseAccessGranted } = await import("./purchaseRules");
+    if (!isPurchaseAccessGranted(data.password)) throw new Error("Senha incorreta.");
+    if (data.month === "2026-12") throw new Error("Os valores atuais de dezembro estão preservados.");
+    const amounts = allocateBudgetCents(data.budgetCents, data.shares);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.rpc("save_purchase_month_plan", {
+      p_month: data.month, p_budget: data.budgetCents,
+      p_shares: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, data.shares[index] ?? 0])),
+      p_allocations: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, amounts[index] ?? 0])),
+    });
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
 export const listAuditPurchaseBudgets = createServerFn({ method: "GET" }).handler(async () => {
   const { listAuditPurchaseBudgets: list } = await import("./cashflow.server");
   return list();
@@ -79,7 +98,7 @@ export const confirmPurchases = createServerFn({ method: "POST" })
     z
       .object({
         entries: z
-          .array(entrySchema.extend({ termDays: z.number().int().min(0).max(3650).optional() }))
+          .array(entrySchema.extend({ debitCents: z.number().int().min(1, "Valor da parcela muito baixo: informe um valor total maior"), termDays: z.number().int().min(1).max(230).optional() }))
           .min(1)
           .max(60),
         actorName: z.string().max(120).optional(),
@@ -119,6 +138,12 @@ export const recordSimulation = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
+    for (const scenario of data.scenarios) {
+      const error = paymentDateError(scenario.paymentDate);
+      if (error) throw new Error(error);
+      if (scenario.installmentCents < 1) throw new Error("Valor da parcela muito baixo: informe um valor total maior");
+    }
+    if (data.purchaseCents < 1) throw new Error("Valor total da compra deve ser maior que zero");
     const { insertAuditEvent } = await import("./cashflow.server");
     await insertAuditEvent({
       eventType: "simulation",

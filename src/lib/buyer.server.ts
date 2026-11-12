@@ -142,18 +142,10 @@ export async function listBuyerPayments(): Promise<BuyerPayment[]> {
 export async function confirmBuyerPurchase(input: {
   entries: { date: string; buyer: Buyer | string; amountCents: number }[];
 }): Promise<BuyerPayment[]> {
-  if (input.entries.length) {
-    const { error } = await supabaseAdmin.from("buyer_payments").insert(
-      input.entries.map((entry) => ({
-        due_date: entry.date,
-        buyer: entry.buyer,
-        amount_cents: entry.amountCents,
-        source: "confirmed",
-        import_batch: null,
-      })),
-    );
-    if (error) throw new Error(error.message);
-  }
+  const buyer = input.entries[0]?.buyer;
+  if (!buyer || input.entries.some((entry) => entry.buyer !== buyer)) throw new Error("Selecione um comprador responsável");
+  const { confirmPurchaseEntries } = await import("./cashflow.server");
+  await confirmPurchaseEntries({ buyer, actor: { route: "/" }, entries: input.entries.map((entry) => ({ date: entry.date, debitCents: entry.amountCents })) });
   return listBuyerPayments();
 }
 
