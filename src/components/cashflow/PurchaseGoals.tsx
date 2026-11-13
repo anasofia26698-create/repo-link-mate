@@ -149,8 +149,9 @@ function JanuaryGoalPanel() {
     setSaving(true);
     try {
       const result = await saveGoalMonthPlan({ data: { password, month: "2027-01", salesCents, cmvPercent: cmv } });
-      for (const item of result.allocations) {
-        await saveBuyerGoalConfig({ data: { period: "2027-01", buyer: item.buyer, salesCents: Math.round(salesCents * item.share / 100), monthlyCents: item.cents, cmvPercent: cmv, ips: december.data?.find((config) => config.buyer === item.buyer)?.ips ?? [] } });
+      const salesSplit = allocateBudgetCents(salesCents, result.allocations.map((item) => item.share));
+      for (const [index, item] of result.allocations.entries()) {
+        await saveBuyerGoalConfig({ data: { period: "2027-01", buyer: item.buyer, salesCents: salesSplit[index] ?? 0, monthlyCents: item.cents, cmvPercent: cmv, ips: december.data?.find((config) => config.buyer === item.buyer)?.ips ?? [] } });
       }
       setSales("");
       await queryClient.invalidateQueries();

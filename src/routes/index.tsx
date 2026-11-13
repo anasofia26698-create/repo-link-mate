@@ -20,7 +20,7 @@ import {
 import { BUYERS } from "@/lib/buyerRules";
 import { FLOW_MONTHS, missingBudgetMessage, parsePurchaseTerms, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "@/lib/purchaseValidation";
 import { Button } from "@/components/ui/button";
-import { confirmPurchases, listCashFlowMonthBudgets, listCashFlow, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
+import { confirmPurchases, listCashFlowMonthBudgets, listCashFlow, listDailySales, saveDailySale, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
 import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
 import { AuditTab } from "@/components/cashflow/AuditTab";
 import { GoalsTab, PurchasesDashboardTab } from "@/components/cashflow/PurchaseGoals";
@@ -136,7 +136,24 @@ function HomePage() {
   }, []);
 
   const activeEntries = useMemo(() => entries.filter((entry) => isTemporaryEntryActive(entry, Date.now())), [entries]);
-  const configuredBudgetMap = useMemo(() => new Map((auditBudgets.data ?? []).map((item) => [item.month, item.budgetCents])), [auditBudgets.data]);
+  const dailySales = useQuery({ queryKey: ["daily-sales"], queryFn: () => listDailySales() });
+  const configuredBudgetMap = useMemo(() => {
+    // Vendas registradas por data passam a ser a base das metas diárias.
+    setRegisteredDailySales(new Map((dailySales.data ?? []).map((item) => [item.date, item.salesCents])));
+    return new Map((auditBudgets.data ?? []).map((item) => [item.month, item.budgetCents]));
+  }, [auditBudgets.data, dailySales.data]);
+  const availableFlowMonths = useMemo(() => FLOW_MONTHS.filter((month) => (configuredBudgetMap.get(month) ?? 0) > 0), [configuredBudgetMap]);
+  const [saleDate, setSaleDate] = useState("");
+  const [saleValue, setSaleValue] = useState("");
+  const [salePassword, setSalePassword] = useState("");
+  const registerSale = async () => {
+    try {
+      await saveDailySale({ data: { password: salePassword, date: saleDate, salesCents: Math.round(parseBRL(saleValue) * 100) } });
+      await queryClient.invalidateQueries({ queryKey: ["daily-sales"] });
+      setSaleValue("");
+      toast.success(`Venda de ${saleDate.split("-").reverse().join("/")} registrada`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível registrar a venda"); }
+  };
 
   const octoberBudgetExceededCents = useMemo(() => {
     const groups = new Map<string, number>();
@@ -493,7 +510,7 @@ function HomePage() {
                 <label>
                   Mês do fluxo
                   <select value={selectedFlowMonth} onChange={(event) => setSelectedFlowMonth(event.target.value)}>
-                    {FLOW_MONTHS.map((month) => <option key={month} value={month}>{FLOW_MONTH_LABELS[month]}</option>)}
+                    {(availableFlowMonths.length ? availableFlowMonths : ["2026-12"]).map((month) => <option key={month} value={month}>{FLOW_MONTH_LABELS[month]}</option>)}
                   </select>
                 </label>
               </div>
@@ -648,6 +665,18 @@ function HomePage() {
               </div>
               {!monthlyBudgetSummary.budgetConfigured ? <p className="muted"><strong>{missingBudgetMessage(selectedFlowMonth)}</strong></p> : monthlyBudgetSummary.totalDebitCents > monthlyBudgetSummary.budgetCents && <p className="red-text"><strong>Orçamento do mês ultrapassado em {money((monthlyBudgetSummary.totalDebitCents - monthlyBudgetSummary.budgetCents) / 100)}.</strong> Todos os livres foram zerados.</p>}
               <p className="muted">Conferência: folga diária total {money(grouped.filter((row) => row.date.startsWith(monthlyBudgetSummary.date.slice(0, 7))).reduce((sum, row) => sum + row.monthlyDay.freeCents, 0) / 100)} de um máximo mensal de {money(Math.min(monthlyBudgetSummary.remainingBudgetCents, monthlyBudgetSummary.goalFreeCents) / 100)}.</p>
+            </section>
+            <section className="card monthly-budget-summary">
+              <div className="card-heading"><div><h2>Vendas do dia — {FLOW_MONTH_LABELS[selectedFlowMonth]}</h2><p>O valor vendido em cada data vira a base da meta diária (mesmas regras do fluxo).</p></div></div>
+              <div className="form-stack">
+                <label>Data<input type="date" min={`${selectedFlowMonth}-01`} max={`${selectedFlowMonth}-31`} value={saleDate.startsWith(selectedFlowMonth) ? saleDate : ""} onChange={(event) => setSaleDate(event.target.value)} /></label>
+                <label>Valor vendido (R$)<input inputMode="decimal" value={saleValue} placeholder="0,00" onChange={(event) => setSaleValue(event.target.value)} /></label>
+                <label>Senha de acesso<input type="password" value={salePassword} onChange={(event) => setSalePassword(event.target.value)} /></label>
+                <Button onClick={registerSale} disabled={!saleDate.startsWith(selectedFlowMonth) || !saleValue}>Registrar venda do dia</Button>
+              </div>
+              {(dailySales.data ?? []).filter((item) => item.date.startsWith(selectedFlowMonth)).length > 0 && <ul className="monthly-totals-list">
+                {(dailySales.data ?? []).filter((item) => item.date.startsWith(selectedFlowMonth)).map((item) => <li key={item.date} className="monthly-total-row"><span>{item.date.split("-").reverse().join("/")}</span><strong>{money(item.salesCents / 100)}</strong></li>)}
+              </ul>}
             </section>
             <section className="card buyer-flow-budget-card">
               <div className="card-heading">
