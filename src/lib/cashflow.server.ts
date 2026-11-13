@@ -2,7 +2,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
 import { isCriticalDate } from "./buyerRules";
 import { missingBudgetMessage, purchaseRejection } from "./purchaseValidation";
-import { getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
+import { setRegisteredDailySales, getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
   id: number;
   date: string;
@@ -190,7 +190,8 @@ export async function confirmPurchaseEntries(input: {
   buyer: string;
   actor: Actor;
 }): Promise<SharedEntry[]> {
-  const [rows, plans] = await Promise.all([listSharedEntries(), listCashFlowMonthBudgets()]);
+  const [rows, plans, sales] = await Promise.all([listSharedEntries(), listCashFlowMonthBudgets(), listDailySales()]);
+  setRegisteredDailySales(new Map(sales.map((item) => [item.date, item.salesCents])));
   const debits = new Map<string, number>();
   rows.forEach((row) => debits.set(row.date, (debits.get(row.date) ?? 0) + row.debitCents));
   const budgets = new Map(plans.map((plan) => [plan.month, plan.budgetCents]));
@@ -522,4 +523,19 @@ export async function importComparison(): Promise<ImportComparison> {
     return { month, budgetCents, totalDebitCents, availableCents, exceededCents, hasImport, blocked: month === "2026-09", budgetBlocked, budgetExceededCents: budgetBlocked ? totalDebitCents - budgetCents : 0 };
   });
   return { runs, increases, monthlyTotals, periodTotalCents, monthlyBudgets, automaticRecovery };
+}
+
+export type DailySale = { date: string; salesCents: number };
+
+export async function listDailySales(): Promise<DailySale[]> {
+  const { data, error } = await supabaseAdmin.from("daily_sales").select("date,sales_cents").order("date", { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({ date: String(row.date), salesCents: Number(row.sales_cents) }));
+}
+
+export async function saveDailySale(input: { date: string; salesCents: number; actor: Actor }): Promise<DailySale[]> {
+  const { error } = await supabaseAdmin.from("daily_sales").upsert({ date: input.date, sales_cents: input.salesCents, updated_at: new Date().toISOString() }, { onConflict: "date" });
+  if (error) throw new Error(error.message);
+  await insertAuditEvent({ eventType: "simulation", actor: input.actor, details: { action: "daily-sale", date: input.date, salesCents: input.salesCents } });
+  return listDailySales();
 }
