@@ -11,6 +11,7 @@ import {
   getAutomaticRecoveryForDate,
   getOctoberBudgetExceededCents,
   getPurchaseLimitForDate,
+  setRegisteredDailySales,
   getMonthlyPurchaseDay,
   isFrozenFlowDate,
   parsePaymentDates,
