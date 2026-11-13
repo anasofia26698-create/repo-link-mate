@@ -1,4 +1,8 @@
 # Flow through December 2027
+- [ ] Include November in buyer goals, add monthly sales entry and pending status while preserving existing budgets.
+- [ ] Block missing-budget confirmation and reject purchases with any sub-cent installment.
+- [ ] Keep confirmed purchases permanently in cash flow, buyer balance and audit; remove expiration paths.
+- [ ] Verify requested simulator and saved-month behavior.
 - [x] Extend month selection and validate dates, terms and installment amounts.
 - [x] Persist monthly budgets and buyer participation without changing December's existing allocations.
 - [x] Validate confirmations against day/month availability and update shared views immediately.
