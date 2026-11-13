@@ -243,8 +243,7 @@ function BuyerGoalsForm() {
         <div className="card-heading"><div><h3>Pesos por dia da semana</h3></div></div>
         <div className="goals-table-wrap"><table className="goals-table"><thead><tr>{WEEKDAY_LABELS.map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody><tr>{WEEKDAY_WEIGHTS.map((weight) => <td key={weight}>{(weight * 100).toFixed(2).replace(".", ",")} %</td>)}</tr></tbody></table></div>
       </section>
-    </>
-  );
+    </>;
 }
 
 
