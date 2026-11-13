@@ -5,4 +5,4 @@
 - [x] Test concrete business rules and verify the simulator in the browser.
 - [x] Extend buyer goal periods through June, inherit configuration, preserve December and warn about unsaved changes.
 - [ ] Await monthly sales amounts before enabling unsaved months in the flow.
-- [ ] Extend flow selection and both client/server payment and budget validation through December 2027, preserving existing months.
+- [x] Extend flow selection and both client/server payment and budget validation through December 2027, preserving existing months.
