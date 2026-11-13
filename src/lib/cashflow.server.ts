@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
 import { isCriticalDate } from "./buyerRules";
+import { isGoalMonthEnabled } from "./goalMonthRules";
 import { missingBudgetMessage, purchaseRejection } from "./purchaseValidation";
 import { setRegisteredDailySales, getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
@@ -26,21 +26,7 @@ export type Actor = {
   route?: string | undefined;
 };
 
-function ttlCutoffIso() {
-  return new Date(Date.now() - TEMPORARY_ENTRY_TTL_MS).toISOString();
-}
-
-/** Manual entries older than 7 days stop affecting the shared flow. */
-export async function purgeExpiredManualEntries() {
-  await supabaseAdmin
-    .from("cash_flow_entries")
-    .delete()
-    .eq("source", "manual")
-    .lt("created_at", ttlCutoffIso());
-}
-
 export async function listSharedEntries(): Promise<SharedEntry[]> {
-  await purgeExpiredManualEntries();
   const { data, error } = await supabaseAdmin
     .from("cash_flow_entries")
     .select("id,date,debit_cents,source,created_at")
@@ -355,12 +341,16 @@ export function listAuditPurchaseBudgets() {
 export type CashFlowMonthBudget = { month: string; budgetCents: number; buyerParticipations?: Record<string, number> | undefined };
 
 export async function listCashFlowMonthBudgets(): Promise<CashFlowMonthBudget[]> {
+  const { data: sales, error: salesError } = await supabaseAdmin.from("buyer_goal_configs").select("period,sales_cents");
+  if (salesError) throw new Error(salesError.message);
+  const savedSales = new Map<string, number>();
+  for (const row of sales ?? []) savedSales.set(row.period, (savedSales.get(row.period) ?? 0) + Number(row.sales_cents));
   const { data, error } = await supabaseAdmin
     .from("cash_flow_month_budgets")
     .select("month,budget_cents,buyer_participations")
     .order("month", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: Number(row.budget_cents), buyerParticipations: row.buyer_participations as Record<string, number> | undefined }));
+  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: isGoalMonthEnabled(row.month, Number(row.budget_cents), savedSales.get(row.month) ?? 0) ? Number(row.budget_cents) : 0, buyerParticipations: row.buyer_participations as Record<string, number> | undefined }));
 }
 
 export async function saveCashFlowMonthBudget(month: string, budgetCents: number): Promise<CashFlowMonthBudget> {

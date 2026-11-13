@@ -137,6 +137,7 @@ function BuyerGoalsForm() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState("2026-12");
   const [draft, setDraft] = useState<GoalDraft | null>(null);
+  const [monthSalesInput, setMonthSalesInput] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [password, setPassword] = useState("");
@@ -171,7 +172,16 @@ function BuyerGoalsForm() {
   const salesCents = BUYERS.reduce((sum, buyer) => sum + Math.round(parseBRL(active.monthly[buyer]?.sales ?? "") * 100), 0);
   const amounts = goalMonthAmounts(period, salesCents, active.shares);
   const label = GOAL_PERIODS.find((item) => item.value === period)?.label ?? period;
+  const savedSalesCents = (configs.data ?? []).filter((item) => item.period === period).reduce((sum, item) => sum + item.salesCents, 0);
+  const pendingSales = period >= "2027-01" && savedSalesCents <= 0;
+  const changeMonthSales = (value: string) => {
+    setMonthSalesInput(value);
+    const allocated = allocateBudgetCents(Math.round(parseBRL(value) * 100), active.shares);
+    setDraft({ ...active, monthly: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, { ...(active.monthly[buyer] ?? emptyMonthlyConfig()), sales: money((allocated[index] ?? 0) / 100) }])) });
+    setDirty(true);
+  };
   const change = (buyer: string, field: "sales" | "cmv", value: string) => {
+    if (field === "sales") setMonthSalesInput(null);
     setDraft({ ...active, monthly: { ...active.monthly, [buyer]: { ...(active.monthly[buyer] ?? emptyMonthlyConfig()), [field]: value } } });
     setDirty(true);
   };
@@ -195,7 +205,7 @@ function BuyerGoalsForm() {
         queryClient.invalidateQueries({ queryKey: ["cash-flow-month-budgets"] }),
         queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] }),
       ]);
-      setDraft(null); setDirty(false);
+      setDraft(null); setMonthSalesInput(null); setDirty(false);
       toast.success(`Metas de ${monthLabel(period)} salvas com sucesso.`);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível salvar as metas."); }
     finally { setSaving(false); }
@@ -204,13 +214,18 @@ function BuyerGoalsForm() {
     <div className="card-heading">
       <label>Período<select value={period} disabled={saving} onChange={(event) => {
         if (dirty && !window.confirm("Há alterações não salvas. Deseja descartá-las e trocar de período?")) return;
-        setPeriod(event.target.value); setDraft(null); setDirty(false);
+        setPeriod(event.target.value); setDraft(null); setMonthSalesInput(null); setDirty(false);
       }}>{GOAL_PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
       <label>Senha de acesso<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       <Button className="btn btn-dark" onClick={save} disabled={saving || configs.isLoading || plans.isLoading || configs.isError || plans.isError}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</Button>
     </div>
     <section className="card december-allocation-note">
       <strong>Dotação oficial de {label}</strong>
+      {pendingSales && <small className="red-text">Pendente de venda do mês</small>}
+      <label>Venda do mês<input aria-label="Venda do mês" inputMode="decimal" readOnly={period === "2026-12"} value={monthSalesInput ?? money(salesCents / 100)} onChange={(event) => {
+        const value = event.target.value.replace(/^R\$\s*/, "");
+        if (!value || /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/.test(value)) changeMonthSales(value);
+      }} /></label>
       <span>Venda-base cadastrada: {money(salesCents / 100)} · fórmula: 60% · dotação total: {money(amounts.budgetCents / 100)}</span>
       <small>Participações congeladas da base de novembro: {BUYERS.map((buyer, index) => `${buyer} ${(active.shares[index] ?? 0).toFixed(2).replace(".", ",")}%`).join(" · ")}. A soma das dotações dos compradores fecha exatamente o total do mês.</small>
     </section>

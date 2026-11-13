@@ -50,6 +50,13 @@
       "when": 1794577229524,
       "tag": "0006_extend_flow_and_goal_window_december_2027",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794583948510,
+      "tag": "0007_permanent_confirmations_and_november_goals",
+      "breakpoints": true
     }
   ]
 }

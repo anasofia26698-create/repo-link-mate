@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { GOAL_MONTHS, goalMonthAmounts, previousGoalMonths } from "./goalMonthRules";
+import { GOAL_MONTHS, goalMonthAmounts, previousGoalMonths, isGoalMonthEnabled } from "./goalMonthRules";
 
 describe("monthly buyer goals", () => {
   const shares = [40.61, 32.54, 26.86];
-  it("offers December 2026 through December 2027 in order", () => {
-    expect(GOAL_MONTHS).toEqual(["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]);
+  it("keeps January unavailable until monthly sales are saved", () => expect(isGoalMonthEnabled("2027-01", 60000000, 0)).toBe(false));
+  it("enables January after saving monthly sales and its budget", () => expect(isGoalMonthEnabled("2027-01", 60000000, 100000000)).toBe(true));
+  it("offers November 2026 through December 2027 in order", () => {
+    expect(GOAL_MONTHS).toEqual(["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]);
   });
+  it("preserves November's R$ 1.891.469,00 budget", () => expect(goalMonthAmounts("2026-11", 0, shares).budgetCents).toBe(189146900));
   it("preserves December at R$ 1.974.368,00 when saved", () => {
     expect(goalMonthAmounts("2026-12", 329061333, shares).budgetCents).toBe(197436800);
     expect(goalMonthAmounts("2026-12", 329061333, shares).allocations).toEqual([80171070, 64239510, 53026220]);
@@ -19,7 +22,7 @@ describe("monthly buyer goals", () => {
     expect(result.allocations.reduce((a, b) => a + b, 0)).toBe(180000000);
   });
   it("inherits from the closest earlier month, never a later month", () => {
-    expect(previousGoalMonths("2027-03")).toEqual(["2027-02", "2027-01", "2026-12"]);
+    expect(previousGoalMonths("2027-03")).toEqual(["2027-02", "2027-01", "2026-12", "2026-11"]);
   });
   it("calculating another month cannot change December", () => {
     const december = goalMonthAmounts("2026-12", 329061333, shares);

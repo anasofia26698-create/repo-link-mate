@@ -4,17 +4,6 @@ import type { Buyer } from "./buyerRules";
 export type BuyerIp = { id: number; ipAddress: string; buyer: string };
 export type BuyerPayment = { date: string; buyer: string; amountCents: number; source: "imported" | "confirmed" };
 
-/** Compras confirmadas pelos compradores valem por 7 dias no fluxo. */
-const CONFIRMED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-export async function purgeExpiredBuyerConfirmations() {
-  await supabaseAdmin
-    .from("buyer_payments")
-    .delete()
-    .eq("source", "confirmed")
-    .lt("created_at", new Date(Date.now() - CONFIRMED_TTL_MS).toISOString());
-}
-
 export type BuyerGoalConfig = {
   period: string;
   buyer: string;
@@ -123,7 +112,6 @@ export async function buyerForIp(ipAddress: string | undefined): Promise<string 
 }
 
 export async function listBuyerPayments(): Promise<BuyerPayment[]> {
-  await purgeExpiredBuyerConfirmations();
   const { data, error } = await supabaseAdmin
     .from("buyer_payments")
     .select("due_date,buyer,amount_cents,source")
@@ -138,7 +126,7 @@ export async function listBuyerPayments(): Promise<BuyerPayment[]> {
   }));
 }
 
-/** Compras confirmadas pelo comprador entram no fluxo e expiram em 7 dias. */
+/** Compras confirmadas pelo comprador entram permanentemente no fluxo. */
 export async function confirmBuyerPurchase(input: {
   entries: { date: string; buyer: Buyer | string; amountCents: number }[];
 }): Promise<BuyerPayment[]> {
