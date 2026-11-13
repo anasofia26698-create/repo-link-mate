@@ -3,5 +3,5 @@
 - [x] Persist monthly budgets and buyer participation without changing December's existing allocations.
 - [x] Validate confirmations against day/month availability and update shared views immediately.
 - [x] Test concrete business rules and verify the simulator in the browser.
-- [ ] Extend buyer goal periods through June, inherit configuration, preserve December and warn about unsaved changes.
+- [x] Extend buyer goal periods through June, inherit configuration, preserve December and warn about unsaved changes.
 - [ ] Await monthly sales amounts before enabling unsaved months in the flow.
