@@ -15,3 +15,4 @@
 - Registered daily sales (daily_sales) replace the weekday average as the day-goal base in both simulationRules (setRegisteredDailySales) and the DB function flow_day_goal; keep them in sync so client and confirmation validation agree.
 - Buyer goal months use shared period/allocation rules and a password-validated atomic save of the selected month's plan, buyer budgets, configurations and audit; unsaved edits require confirmation before switching months.
 - Flow period labels and available options derive from the shared payment-window month list and persisted positive budgets; extend database confirmation and plan limits alongside client validation to prevent mismatches.
+- Confirmed purchases are permanent: never expire or exclude them by age in cash flow, buyer payments, imports or database availability, so monthly balances remain consistent with audit records.

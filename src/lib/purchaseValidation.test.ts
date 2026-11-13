@@ -11,7 +11,8 @@ describe("payment window", () => {
   it("rejects dates before today", () => expect(paymentDateError("2026-11-13", "2026-11-14")).toBe("Datas anteriores à data de hoje não são permitidas"));
 });
 describe("values and terms", () => {
-  it("rejects sub-cent installments for one cent in three parts", () => expect(splitInstallmentCents(1, 3)).toEqual([1, 0, 0]));
+  it("rejects sub-cent installments for one cent in three parts", () => expect(splitInstallmentCents(1, 3)).toEqual([]));
+  it("accepts R$ 2,00 in three installments", () => expect(splitInstallmentCents(200, 3)).toEqual([67, 67, 66]));
   it("preserves the purchase total to the cent", () => expect(splitInstallmentCents(100, 3)).toEqual([34, 33, 33]));
   it("rejects a zero total", () => expect(splitInstallmentCents(0, 3)).toEqual([]));
   it("allows integer terms 1 through 230", () => expect(termError([1, 230])).toBeNull());
@@ -20,7 +21,7 @@ describe("values and terms", () => {
 });
 describe("monthly availability", () => {
   it("preserves November's saved budget", () => expect(getMonthlyPurchaseDay("2026-11-13", new Map(), new Map([["2026-11", 189146900]])).budgetCents).toBe(189146900));
-  it("blocks December 2027 without a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map(), "2026-11-13")).toBe("Orçamento de dezembro de 2027 não cadastrado"));
+  it("blocks December 2027 without a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map(), "2026-11-13")).toBe("Orçamento de dezembro de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas."));
   it("accepts December 2027 with a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map([["2027-12", 10000000]]), "2026-11-13")).toBeNull());
   const budgets = new Map([["2026-12", 197436800], ["2027-02", 10000000], ["2027-06", 10000000]]);
   it("keeps the December budget and sixty percent daily goal", () => {
@@ -29,7 +30,7 @@ describe("monthly availability", () => {
     expect(day.goalCents).toBe(7440000);
   });
   it("keeps the critical day cap at 50000", () => expect(getPurchaseLimitForDate("2027-02-10").limit).toBe(50000));
-  it("blocks March with no registered budget", () => expect(purchaseRejection("2027-03-12", 1, new Map(), budgets, "2026-11-12")).toBe("Orçamento de março de 2027 não cadastrado"));
+  it("blocks March with no registered budget", () => expect(purchaseRejection("2027-03-12", 1, new Map(), budgets, "2026-11-12")).toBe("Orçamento de março de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas."));
   it("accepts June 30 with a budget", () => expect(purchaseRejection("2027-06-30", 1, new Map(), budgets, "2026-11-12")).toBeNull());
   it("applies February 10 debits only to February", () => {
     const before = getMonthlyPurchaseDay("2026-12-01", new Map(), budgets);

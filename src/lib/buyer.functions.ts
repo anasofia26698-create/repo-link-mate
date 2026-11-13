@@ -127,7 +127,7 @@ export const getBuyerGoalConfigs = createServerFn({ method: "GET" })
 export const saveBuyerGoalMonth = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => z.object({
     password: z.string(),
-    period: z.enum(["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]),
+    period: z.enum(["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]),
     shares: z.array(z.number().nonnegative()).length(3),
     configs: z.array(goalConfigSchema.omit({ period: true, monthlyCents: true })).length(3),
   }).parse(data))
@@ -203,7 +203,7 @@ export const getBuyerMonthlyOverview = createServerFn({ method: "GET" }).handler
   return { payments, budgets: [...budgets, ...fallbackBudgets] };
 });
 
-/** Confirmação de compra do comprador: entra no fluxo e expira em 7 dias. */
+/** Confirmação permanente de compra do comprador no fluxo. */
 export const confirmBuyerPurchases = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
     passwordSchema

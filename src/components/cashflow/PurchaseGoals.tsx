@@ -171,6 +171,13 @@ function BuyerGoalsForm() {
   const salesCents = BUYERS.reduce((sum, buyer) => sum + Math.round(parseBRL(active.monthly[buyer]?.sales ?? "") * 100), 0);
   const amounts = goalMonthAmounts(period, salesCents, active.shares);
   const label = GOAL_PERIODS.find((item) => item.value === period)?.label ?? period;
+  const savedSalesCents = (configs.data ?? []).filter((item) => item.period === period).reduce((sum, item) => sum + item.salesCents, 0);
+  const pendingSales = period >= "2027-01" && savedSalesCents <= 0;
+  const changeMonthSales = (value: string) => {
+    const allocated = allocateBudgetCents(Math.round(parseBRL(value) * 100), active.shares);
+    setDraft({ ...active, monthly: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, { ...(active.monthly[buyer] ?? emptyMonthlyConfig()), sales: money((allocated[index] ?? 0) / 100) }])) });
+    setDirty(true);
+  };
   const change = (buyer: string, field: "sales" | "cmv", value: string) => {
     setDraft({ ...active, monthly: { ...active.monthly, [buyer]: { ...(active.monthly[buyer] ?? emptyMonthlyConfig()), [field]: value } } });
     setDirty(true);
@@ -211,6 +218,11 @@ function BuyerGoalsForm() {
     </div>
     <section className="card december-allocation-note">
       <strong>Dotação oficial de {label}</strong>
+      {pendingSales && <small className="red-text">Pendente de venda do mês</small>}
+      <label>Venda do mês<input aria-label="Venda do mês" inputMode="decimal" readOnly={period === "2026-12"} value={money(salesCents / 100)} onChange={(event) => {
+        const value = event.target.value.replace(/^R\$\s*/, "");
+        if (!value || /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/.test(value)) changeMonthSales(value);
+      }} /></label>
       <span>Venda-base cadastrada: {money(salesCents / 100)} · fórmula: 60% · dotação total: {money(amounts.budgetCents / 100)}</span>
       <small>Participações congeladas da base de novembro: {BUYERS.map((buyer, index) => `${buyer} ${(active.shares[index] ?? 0).toFixed(2).replace(".", ",")}%`).join(" · ")}. A soma das dotações dos compradores fecha exatamente o total do mês.</small>
     </section>
