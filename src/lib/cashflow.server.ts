@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { isCriticalDate } from "./buyerRules";
+import { isGoalMonthEnabled } from "./goalMonthRules";
 import { missingBudgetMessage, purchaseRejection } from "./purchaseValidation";
 import { setRegisteredDailySales, getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
 export type SharedEntry = {
@@ -349,7 +350,7 @@ export async function listCashFlowMonthBudgets(): Promise<CashFlowMonthBudget[]>
     .select("month,budget_cents,buyer_participations")
     .order("month", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: row.month >= "2027-01" && (savedSales.get(row.month) ?? 0) <= 0 ? 0 : Number(row.budget_cents), buyerParticipations: row.buyer_participations as Record<string, number> | undefined }));
+  return (data ?? []).map((row) => ({ month: String(row.month), budgetCents: isGoalMonthEnabled(row.month, Number(row.budget_cents), savedSales.get(row.month) ?? 0) ? Number(row.budget_cents) : 0, buyerParticipations: row.buyer_participations as Record<string, number> | undefined }));
 }
 
 export async function saveCashFlowMonthBudget(month: string, budgetCents: number): Promise<CashFlowMonthBudget> {
