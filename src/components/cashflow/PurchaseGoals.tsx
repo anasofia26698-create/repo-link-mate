@@ -5,12 +5,14 @@ import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
-import { getBuyerGoalConfigs, getBuyerMonthlyOverview, repairNovemberDashboardBudgets, saveBuyerGoalConfig } from "@/lib/buyer.functions";
-import { listCashFlow, listCashFlowMonthBudgets, saveGoalMonthPlan } from "@/lib/cashflow.functions";
+import { getBuyerGoalConfigs, getBuyerMonthlyOverview, repairNovemberDashboardBudgets, saveBuyerGoalMonth } from "@/lib/buyer.functions";
+import { listCashFlow, listCashFlowMonthBudgets } from "@/lib/cashflow.functions";
 import { allocateBudgetCents } from "@/lib/purchaseValidation";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 import { MonthlyPurchasePlan } from "./MonthlyPurchasePlan";
+import { Button } from "@/components/ui/button";
+import { GOAL_MONTHS, DECEMBER_SALES_CENTS, DEFAULT_GOAL_SHARES, goalMonthAmounts, previousGoalMonths } from "@/lib/goalMonthRules";
 
 export const SECTORS = [
   "Ético",
@@ -127,141 +129,109 @@ export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: b
   );
 }
 
-const GOAL_PERIODS = [{ value: "2026-12", label: "Dezembro/2026" }, { value: "2027-01", label: "Janeiro/2027" }] as const;
+const GOAL_PERIODS = GOAL_MONTHS.map((value) => ({ value, label: new Date(`${value}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(" de ", "/") }));
 
-function JanuaryGoalPanel() {
-  const queryClient = useQueryClient();
-  const plans = useQuery({ queryKey: ["cash-flow-month-budgets"], queryFn: () => listCashFlowMonthBudgets() });
-  const december = useQuery({ queryKey: ["buyer-goal-configs", "2026-12"], queryFn: () => getBuyerGoalConfigs({ data: { period: "2026-12" } }) });
-  const january = useQuery({ queryKey: ["buyer-goal-configs", "2027-01"], queryFn: () => getBuyerGoalConfigs({ data: { period: "2027-01" } }) });
-  const [sales, setSales] = useState("");
-  const [password, setPassword] = useState("");
-  const [saving, setSaving] = useState(false);
-  const cmv = december.data?.[0]?.cmvPercent ?? 60;
-  const plan = plans.data?.find((item) => item.month === "2027-01");
-  const shares = BUYERS.map((buyer) => Number((plan?.buyerParticipations ?? plans.data?.find((item) => item.month === "2026-12")?.buyerParticipations)?.[buyer] ?? 0));
-  const savedSalesCents = (january.data ?? []).reduce((total, item) => total + item.salesCents, 0);
-  const salesCents = sales ? Math.round(parseBRL(sales) * 100) : savedSalesCents;
-  const budgetCents = sales ? Math.round(salesCents * cmv / 100) : plan?.budgetCents ?? 0;
-  let amounts: number[] = [];
-  try { amounts = budgetCents > 0 ? allocateBudgetCents(budgetCents, shares) : []; } catch { /* sem participações */ }
-  const save = async () => {
-    setSaving(true);
-    try {
-      const result = await saveGoalMonthPlan({ data: { password, month: "2027-01", salesCents, cmvPercent: cmv } });
-      const salesSplit = allocateBudgetCents(salesCents, result.allocations.map((item) => item.share));
-      for (const [index, item] of result.allocations.entries()) {
-        await saveBuyerGoalConfig({ data: { period: "2027-01", buyer: item.buyer, salesCents: salesSplit[index] ?? 0, monthlyCents: item.cents, cmvPercent: cmv, ips: december.data?.find((config) => config.buyer === item.buyer)?.ips ?? [] } });
-      }
-      setSales("");
-      await queryClient.invalidateQueries();
-      toast.success("Dotação de janeiro/2027 salva. O mês está disponível no fluxo.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível salvar janeiro/2027."); }
-    finally { setSaving(false); }
-  };
-  return <>
-    <section className="card december-allocation-note">
-      <strong>Dotação oficial de janeiro/2027</strong>
-      <span>Venda prevista: {money(salesCents / 100)} · fórmula: {String(cmv).replace(".", ",")}% · dotação total: {money(budgetCents / 100)}{plan && !sales ? " (salva)" : sales ? " (prévia, ainda não salva)" : ""}</span>
-      <small>{BUYERS.map((buyer, index) => `${buyer} ${String(shares[index] ?? 0).replace(".", ",")}%: ${money((amounts[index] ?? 0) / 100)}`).join(" · ")}. A soma das dotações fecha exatamente o total do mês.</small>
-    </section>
-    <section className="card goals-card">
-      <div className="card-heading"><div><h2>Venda mensal prevista — Janeiro/2027</h2><p>Os demais campos usam a configuração já salva.</p></div></div>
-      <div className="form-stack">
-        <label>Venda mensal prevista (R$)<input inputMode="decimal" value={sales} placeholder={savedSalesCents ? money(savedSalesCents / 100) : "0,00"} onChange={(event) => setSales(event.target.value.replace(/^R\$\s*/, ""))} /></label>
-        <label>Senha de acesso<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-        <button className="btn btn-dark" onClick={save} disabled={saving || salesCents <= 0 || plans.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar janeiro/2027"}</button>
-      </div>
-    </section>
-  </>;
-}
+type GoalDraft = { monthly: Record<string, MonthlyBuyerConfig>; profiles: Record<string, BuyerProfile>; shares: number[] };
 
 function BuyerGoalsForm() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState("2026-12");
-  const [monthly, setMonthly] = useState<Record<string, MonthlyBuyerConfig>>({});
-  const [profiles, setProfiles] = useState<Record<string, BuyerProfile>>({});
+  const [draft, setDraft] = useState<GoalDraft | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const goalConfigs = useQuery({ queryKey: ["buyer-goal-configs", period], queryFn: () => getBuyerGoalConfigs({ data: { period } }) });
-  const currentMonthly = BUYERS.reduce<Record<string, MonthlyBuyerConfig>>((result, buyer) => {
-    result[buyer] = monthly[`${period}:${buyer}`] ?? emptyMonthlyConfig();
-    return result;
-  }, {});
-
-  useEffect(() => {
-    if (goalConfigs.isLoading) return;
-    const nextMonthly: Record<string, MonthlyBuyerConfig> = {};
-    for (const buyer of BUYERS) {
-      const config = goalConfigs.data?.find((item) => item.buyer === buyer);
-      nextMonthly[`${period}:${buyer}`] = config
-        ? { sales: money(config.salesCents / 100), cmv: String(config.cmvPercent), allocation: money(config.monthlyCents / 100), coverage: "", salesPurchases: "" }
-        : emptyMonthlyConfig();
-    }
-    setMonthly(nextMonthly);
-    setProfiles(Object.fromEntries(BUYERS.map((buyer) => {
-      const config = goalConfigs.data?.find((item) => item.buyer === buyer);
-      return [buyer, { name: buyer, ips: config?.ips.join(", ") ?? "", active: true }];
-    })));
-  }, [period, goalConfigs.data, goalConfigs.isLoading]);
-
-  const updateMoney = (value: string, onChange: (value: string) => void) => {
-    const next = value.replace(/^R\$\s*/, "");
-    const validBRL = /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/;
-    if (!next || validBRL.test(next)) onChange(next);
+  const [password, setPassword] = useState("");
+  const plans = useQuery({ queryKey: ["cash-flow-month-budgets"], queryFn: () => listCashFlowMonthBudgets() });
+  const configs = useQuery({ queryKey: ["buyer-goal-periods"], queryFn: async () => {
+    const rows = await Promise.all(GOAL_MONTHS.map((period) => getBuyerGoalConfigs({ data: { period } })));
+    return rows.flat();
+  } });
+  const savedDraft = useMemo<GoalDraft>(() => {
+    const rows = configs.data ?? [];
+    const priorMonths = previousGoalMonths(period);
+    const currentPlan = plans.data?.find((item) => item.month === period);
+    const inheritedPlan = priorMonths.map((month) => plans.data?.find((item) => item.month === month)).find((item) => item?.buyerParticipations);
+    const shares = BUYERS.map((buyer, index) => Number((currentPlan?.buyerParticipations ?? inheritedPlan?.buyerParticipations)?.[buyer] ?? DEFAULT_GOAL_SHARES[index] ?? 0));
+    const decemberSales = allocateBudgetCents(DECEMBER_SALES_CENTS, shares);
+    const currentSales = rows.filter((item) => item.period === period).reduce((sum, item) => sum + item.salesCents, 0);
+    return {
+      shares,
+      monthly: Object.fromEntries(BUYERS.map((buyer, index) => {
+        const current = rows.find((item) => item.period === period && item.buyer === buyer);
+        const inherited = priorMonths.map((month) => rows.find((item) => item.period === month && item.buyer === buyer)).find(Boolean);
+        const salesCents = period === "2026-12" && currentSales !== DECEMBER_SALES_CENTS ? decemberSales[index] ?? 0 : current?.salesCents ?? 0;
+        return [buyer, { ...emptyMonthlyConfig(), sales: money(salesCents / 100), cmv: String(current?.cmvPercent ?? inherited?.cmvPercent ?? 60) }];
+      })),
+      profiles: Object.fromEntries(BUYERS.map((buyer) => {
+        const source = rows.find((item) => item.period === period && item.buyer === buyer) ?? priorMonths.map((month) => rows.find((item) => item.period === month && item.buyer === buyer)).find(Boolean);
+        return [buyer, { name: buyer, ips: source?.ips.join(", ") ?? "", active: true }];
+      })),
+    };
+  }, [period, configs.data, plans.data]);
+  const active = draft ?? savedDraft;
+  const salesCents = BUYERS.reduce((sum, buyer) => sum + Math.round(parseBRL(active.monthly[buyer]?.sales ?? "") * 100), 0);
+  const amounts = goalMonthAmounts(period, salesCents, active.shares);
+  const label = GOAL_PERIODS.find((item) => item.value === period)?.label ?? period;
+  const change = (buyer: string, field: "sales" | "cmv", value: string) => {
+    setDraft({ ...active, monthly: { ...active.monthly, [buyer]: { ...(active.monthly[buyer] ?? emptyMonthlyConfig()), [field]: value } } });
+    setDirty(true);
   };
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const save = async () => {
     setSaving(true);
     try {
-      const normalizedMonthly: Record<string, MonthlyBuyerConfig> = {};
-      for (const buyer of BUYERS) {
-        const config = currentMonthly[buyer] ?? emptyMonthlyConfig();
-        const rawSales = config.sales.replace(/^R\$\s*/, "");
-        const validBRL = /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/;
-        if (rawSales && !validBRL.test(rawSales)) throw new Error(`Use o formato brasileiro para a venda de ${buyer} (ex.: 1.400.000,00).`);
-        const sales = parseBRL(config.sales);
-        const allocation = parseBRL(config.allocation);
-        const cmv = Number(config.cmv.replace(",", "."));
-        const ips = (profiles[buyer]?.ips ?? "").split(/[\s,;]+/).map((ip) => ip.trim().toLowerCase()).filter(Boolean);
-        if (!Number.isFinite(sales) || sales < 0 || !Number.isFinite(allocation) || allocation < 0 || !Number.isFinite(cmv) || cmv < 0) throw new Error(`Venda, dotação e CMV inválidos para ${buyer}.`);
-        if (ips.some((ip) => !/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip) && !/^[0-9a-f:]+$/i.test(ip))) throw new Error(`Informe IPs válidos para ${buyer}.`);
-        const formattedSales = sales === 0 ? "R$ 0,00" : money(sales);
-        normalizedMonthly[`${period}:${buyer}`] = { ...config, sales: formattedSales, allocation: money(allocation), cmv: String(cmv) };
-        await saveBuyerGoalConfig({ data: { period, buyer, salesCents: Math.round(sales * 100), monthlyCents: Math.round(allocation * 100), cmvPercent: cmv, ips } });
-      }
-      setMonthly(normalizedMonthly);
+      await saveBuyerGoalMonth({ data: { password, period, shares: active.shares, configs: BUYERS.map((buyer) => ({
+        buyer, salesCents: Math.round(parseBRL(active.monthly[buyer]?.sales ?? "") * 100),
+        cmvPercent: Number((active.monthly[buyer]?.cmv ?? "60").replace(",", ".")),
+        ips: (active.profiles[buyer]?.ips ?? "").split(/[\s,;]+/).map((ip) => ip.trim().toLowerCase()).filter(Boolean),
+      })) } });
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["buyer-goal-periods"] }),
         queryClient.invalidateQueries({ queryKey: ["buyer-goal-configs", period] }),
+        queryClient.invalidateQueries({ queryKey: ["cash-flow-month-budgets"] }),
         queryClient.invalidateQueries({ queryKey: ["buyer-monthly-overview"] }),
       ]);
+      setDraft(null); setDirty(false);
       toast.success(`Metas de ${monthLabel(period)} salvas com sucesso.`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível salvar as metas.");
-    } finally {
-      setSaving(false);
-    }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível salvar as metas."); }
+    finally { setSaving(false); }
   };
-
-  const totalAllocation = BUYERS.reduce((total, buyer) => total + parseBRL((currentMonthly[buyer] ?? emptyMonthlyConfig()).allocation), 0);
-  return (
-    <>
-      <div className="card-heading" style={{ marginBottom: "1rem" }}>
-        <label>Período<select value={period} onChange={(event) => setPeriod(event.target.value)}>{GOAL_PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-        {period !== "2027-01" && <button className="btn btn-dark" onClick={save} disabled={saving || goalConfigs.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</button>}
-      </div>
-      {period === "2026-12" && <section className="card december-allocation-note">
-        <strong>Dotação oficial de dezembro/2026</strong>
-        <span>Venda-base cadastrada: {money(DECEMBER_ALLOCATION_BASE.salesCents / 100)} · fórmula: 60% · dotação total: {money(DECEMBER_ALLOCATION_BASE.allocationCents / 100)}</span>
-        <small>Participações congeladas da base de novembro: Marcelo 40,61% · Suellen 32,54% · Maurício 26,86%. A soma das dotações dos compradores fecha exatamente o total do mês.</small>
-      </section>}
-      {period === "2027-01" && <JanuaryGoalPanel />}
-      <div style={{ display: period === "2027-01" ? "none" : "block" }}>
-        <section className="card goals-card">
-          <div className="card-heading"><div><h2>Meta por comprador</h2><p>Venda mensal, CMV informativo e IPs vinculados.</p></div></div>
-          <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês (R$)</th><th>% CMV alvo</th><th>IPs vinculados</th><th>Dotação mensal (R$)</th><th>Participação</th></tr></thead><tbody>
-            {BUYERS.map((buyer) => { const config = currentMonthly[buyer] ?? emptyMonthlyConfig(); const allocation = parseBRL(config.allocation); const participation = totalAllocation > 0 ? allocation / totalAllocation * 100 : 0; return <tr key={buyer}><td><strong>{buyer}</strong></td><td><input inputMode="decimal" value={config.sales} placeholder="0,00" onChange={(event) => updateMoney(event.target.value, (value) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, sales: value } })))} onBlur={() => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, sales: config.sales ? money(parseBRL(config.sales)) : "" } }))} /></td><td><input inputMode="decimal" value={config.cmv} placeholder="60" onChange={(event) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, cmv: event.target.value.replace(/[^\d,]/g, "") } }))} />%</td><td><input value={profiles[buyer]?.ips ?? ""} placeholder="IPs" onChange={(event) => setProfiles((current) => ({ ...current, [buyer]: { ...(current[buyer] ?? { name: buyer, active: true }), ips: event.target.value } }))} /></td><td><input className="editable-allocation" style={{ background: "#fff3b0", fontWeight: 700 }} inputMode="decimal" value={config.allocation} placeholder="0,00" aria-label={`Dotação mensal de ${buyer}`} onChange={(event) => updateMoney(event.target.value, (value) => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, allocation: value } })))} onBlur={() => setMonthly((current) => ({ ...current, [`${period}:${buyer}`]: { ...config, allocation: config.allocation ? money(parseBRL(config.allocation)) : "" } }))} /></td><td><strong>{participation.toFixed(2).replace(".", ",")} %</strong></td></tr>; })}
-          </tbody></table></div>
-        </section>
-      </div>
+  return <>
+    <div className="card-heading">
+      <label>Período<select value={period} disabled={saving} onChange={(event) => {
+        if (dirty && !window.confirm("Há alterações não salvas. Deseja descartá-las e trocar de período?")) return;
+        setPeriod(event.target.value); setDraft(null); setDirty(false);
+      }}>{GOAL_PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+      <label>Senha de acesso<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+      <Button className="btn btn-dark" onClick={save} disabled={saving || configs.isLoading || plans.isLoading || configs.isError || plans.isError}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</Button>
+    </div>
+    <section className="card december-allocation-note">
+      <strong>Dotação oficial de {label}</strong>
+      <span>Venda-base cadastrada: {money(salesCents / 100)} · fórmula: 60% · dotação total: {money(amounts.budgetCents / 100)}</span>
+      <small>Participações congeladas da base de novembro: {BUYERS.map((buyer, index) => `${buyer} ${(active.shares[index] ?? 0).toFixed(2).replace(".", ",")}%`).join(" · ")}. A soma das dotações dos compradores fecha exatamente o total do mês.</small>
+    </section>
+    <section className="card goals-card">
+      <div className="card-heading"><div><h2>Meta por comprador</h2><p>Venda mensal, CMV informativo e IPs vinculados.</p></div></div>
+      <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês (R$)</th><th>% CMV alvo</th><th>IPs vinculados</th><th>Dotação mensal (R$)</th><th>Participação</th></tr></thead><tbody>
+        {BUYERS.map((buyer, index) => <tr key={buyer}>
+          <td><strong>{buyer}</strong></td>
+          <td><input aria-label={`Venda do mês de ${buyer}`} inputMode="decimal" value={active.monthly[buyer]?.sales ?? "0,00"} readOnly={period === "2026-12"} onChange={(event) => {
+            const value = event.target.value.replace(/^R\$\s*/, "");
+            if (!value || /^(?:\d+|\d{1,3}(?:\.\d{3})*)(?:,\d{0,2})?$/.test(value)) change(buyer, "sales", value);
+          }} onBlur={() => { if (dirty) change(buyer, "sales", money(parseBRL(active.monthly[buyer]?.sales ?? ""))); }} /></td>
+          <td><input inputMode="decimal" value={active.monthly[buyer]?.cmv ?? "60"} onChange={(event) => change(buyer, "cmv", event.target.value.replace(/[^\d,]/g, ""))} />%</td>
+          <td><input value={active.profiles[buyer]?.ips ?? ""} placeholder="IPs" onChange={(event) => {
+            setDraft({ ...active, profiles: { ...active.profiles, [buyer]: { ...(active.profiles[buyer] ?? { name: buyer, active: true }), ips: event.target.value } } }); setDirty(true);
+          }} /></td>
+          <td><input className="editable-allocation" aria-label={`Dotação mensal de ${buyer}`} readOnly value={money((amounts.allocations[index] ?? 0) / 100)} /></td>
+          <td><strong>{(active.shares[index] ?? 0).toFixed(2).replace(".", ",")} %</strong></td>
+        </tr>)}
+      </tbody></table></div>
+    </section>
       <section className="card goals-card">
         <div className="card-heading"><div><h2><Calculator size={20} /> 3. Parâmetros fixos</h2><p>Configurados uma vez e usados nos cálculos automáticos.</p></div></div>
         <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Parâmetro</th><th>Valor</th><th>Descrição</th></tr></thead><tbody>
