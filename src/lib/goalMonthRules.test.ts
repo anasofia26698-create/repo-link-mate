@@ -3,8 +3,8 @@ import { GOAL_MONTHS, goalMonthAmounts, previousGoalMonths } from "./goalMonthRu
 
 describe("monthly buyer goals", () => {
   const shares = [40.61, 32.54, 26.86];
-  it("offers December 2026 through June 2027 in order", () => {
-    expect(GOAL_MONTHS).toEqual(["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06"]);
+  it("offers December 2026 through December 2027 in order", () => {
+    expect(GOAL_MONTHS).toEqual(["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]);
   });
   it("preserves December at R$ 1.974.368,00 when saved", () => {
     expect(goalMonthAmounts("2026-12", 329061333, shares).budgetCents).toBe(197436800);

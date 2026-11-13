@@ -1,6 +1,6 @@
 import { allocateBudgetCents, FLOW_MONTHS } from "./purchaseValidation";
 
-export const GOAL_MONTHS = FLOW_MONTHS;
+export const GOAL_MONTHS = FLOW_MONTHS.filter((month) => month !== "2026-11");
 export const DECEMBER_SALES_CENTS = 329061333;
 export const DECEMBER_BUDGET_CENTS = 197436800;
 export const DECEMBER_BUYER_CENTS = [80171070, 64239510, 53026220] as const;
