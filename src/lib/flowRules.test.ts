@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isTemporaryEntryActive, replaceImportedEntries } from "./flowRules";
+import { isTemporaryEntryActive, replaceImportedEntries, type FlowEntryLike } from "./flowRules";
 
 describe("permanent confirmations", () => {
   it("keeps a confirmed flow entry after seven days", () => {
@@ -7,6 +7,6 @@ describe("permanent confirmations", () => {
   });
   it("preserves old confirmations when replacing imported entries", () => {
     const confirmed = { source: "manual" as const, createdAt: 1 };
-    expect(replaceImportedEntries([confirmed], [{ source: "imported" as const }], 1000000000)).toEqual([confirmed, { source: "imported" }]);
+    expect(replaceImportedEntries<FlowEntryLike>([confirmed], [{ source: "imported" }], 1000000000)).toEqual([confirmed, { source: "imported" }]);
   });
 });
