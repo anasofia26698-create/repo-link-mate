@@ -400,6 +400,15 @@ export type Database = {
         Args: { p_all_free: number; p_date: string; p_remaining: number }
         Returns: number
       }
+      save_buyer_goal_month: {
+        Args: {
+          p_budget: number
+          p_configs: Json
+          p_month: string
+          p_shares: Json
+        }
+        Returns: undefined
+      }
       save_purchase_month_plan: {
         Args: {
           p_allocations: Json
