@@ -124,6 +124,36 @@ export const getBuyerGoalConfigs = createServerFn({ method: "GET" })
     return listBuyerGoalConfigs(data.period);
   });
 
+export const saveBuyerGoalMonth = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({
+    password: z.string(),
+    period: z.enum(["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06"]),
+    shares: z.array(z.number().nonnegative()).length(3),
+    configs: z.array(goalConfigSchema.omit({ period: true, monthlyCents: true })).length(3),
+  }).parse(data))
+  .handler(async ({ data }) => {
+    await requirePassword(data.password);
+    const { BUYERS } = await import("./buyerRules");
+    const { goalMonthAmounts, DECEMBER_SALES_CENTS } = await import("./goalMonthRules");
+    const configs = BUYERS.map((buyer) => {
+      const config = data.configs.find((item) => item.buyer === buyer);
+      if (!config) throw new Error("Informe os três compradores.");
+      if (config.ips.some((ip) => !/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(ip) && !/^[0-9a-f:]+$/i.test(ip))) throw new Error("Informe IPs válidos.");
+      return config;
+    });
+    const sales = configs.reduce((sum, item) => sum + item.salesCents, 0);
+    if (data.period === "2026-12" && sales !== DECEMBER_SALES_CENTS) throw new Error("A venda-base de dezembro deve permanecer em R$ 3.290.613,33.");
+    const { budgetCents, allocations } = goalMonthAmounts(data.period, sales, data.shares);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.rpc("save_buyer_goal_month", {
+      p_month: data.period, p_budget: budgetCents,
+      p_shares: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, data.shares[index] ?? 0])),
+      p_configs: configs.map((config, index) => ({ ...config, monthlyCents: allocations[index] ?? 0 })),
+    });
+    if (error) throw new Error(error.message);
+    return { budgetCents };
+  });
+
 export const saveBuyerGoalConfig = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => goalConfigSchema.parse(data))
   .handler(async ({ data }) => {
