@@ -29,6 +29,13 @@
       "when": 1794510523341,
       "tag": "0003_qualify_confirmation_daily_totals",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794574860408,
+      "tag": "0004_daily_sales_and_goal_month",
+      "breakpoints": true
     }
   ]
 }

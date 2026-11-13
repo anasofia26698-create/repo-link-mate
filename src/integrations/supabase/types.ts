@@ -296,6 +296,24 @@ export type Database = {
         }
         Relationships: []
       }
+      daily_sales: {
+        Row: {
+          date: string
+          sales_cents: number
+          updated_at: string
+        }
+        Insert: {
+          date: string
+          sales_cents: number
+          updated_at?: string
+        }
+        Update: {
+          date?: string
+          sales_cents?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       known_ip_users: {
         Row: {
           created_at: string
@@ -377,6 +395,7 @@ export type Database = {
         Args: { p_actor: Json; p_buyer: string; p_entries: Json }
         Returns: undefined
       }
+      flow_day_goal: { Args: { p_date: string }; Returns: number }
       purchase_day_available: {
         Args: { p_all_free: number; p_date: string; p_remaining: number }
         Returns: number

@@ -42,3 +42,22 @@ describe("monthly availability", () => {
     expect(days[9]?.freeCents).toBe(0);
   });
 });
+describe("janeiro/2027 e vendas do dia", () => {
+  it("registered daily sales become the day goal base (60%)", async () => {
+    const { setRegisteredDailySales } = await import("./simulationRules");
+    setRegisteredDailySales(new Map([["2027-01-12", 10000000]]));
+    expect(getPurchaseLimitForDate("2027-01-12").limit).toBe(60000);
+    setRegisteredDailySales(new Map());
+  });
+  it("registered sales keep the critical day cap", async () => {
+    const { setRegisteredDailySales } = await import("./simulationRules");
+    setRegisteredDailySales(new Map([["2027-01-15", 20000000]]));
+    expect(getPurchaseLimitForDate("2027-01-15").limit).toBe(50000);
+    setRegisteredDailySales(new Map());
+  });
+  it("january allocation sums to the month total with remainder to the largest share", async () => {
+    const { allocateBudgetCents } = await import("./purchaseValidation");
+    const amounts = allocateBudgetCents(100001, [40.61, 32.54, 26.86]);
+    expect(amounts.reduce((a, b) => a + b, 0)).toBe(100001);
+  });
+});

@@ -221,3 +221,45 @@ export const deleteKnownIpUser = createServerFn({ method: "POST" })
     const { removeKnownIpUser } = await import("./cashflow.server");
     return removeKnownIpUser(data.id);
   });
+
+export const listDailySales = createServerFn({ method: "GET" }).handler(async () => {
+  const { listDailySales: list } = await import("./cashflow.server");
+  return list();
+});
+
+export const saveDailySale = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), salesCents: z.number().int().min(0) }).parse(data))
+  .handler(async ({ data }) => {
+    const { isPurchaseAccessGranted } = await import("./purchaseRules");
+    if (!isPurchaseAccessGranted(data.password)) throw new Error("Senha incorreta.");
+    const { listCashFlowMonthBudgets: plans, saveDailySale: save } = await import("./cashflow.server");
+    const month = data.date.slice(0, 7);
+    if (!(await plans()).some((plan) => plan.month === month && plan.budgetCents > 0)) throw new Error("Cadastre a dotação do mês antes de registrar vendas.");
+    return save({ date: data.date, salesCents: data.salesCents, actor: { route: "/fluxo" } });
+  });
+
+/** Cadastro de Metas: venda mensal × % CMV salvo vira a dotação; participações seguem as de dezembro/2026. */
+export const saveGoalMonthPlan = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => z.object({ password: z.string(), month: z.literal("2027-01"), salesCents: z.number().int().positive(), cmvPercent: z.number().positive().max(100) }).parse(data))
+  .handler(async ({ data }) => {
+    const { isPurchaseAccessGranted } = await import("./purchaseRules");
+    if (!isPurchaseAccessGranted(data.password)) throw new Error("Senha incorreta.");
+    const { listCashFlowMonthBudgets: plans, insertAuditEvent } = await import("./cashflow.server");
+    const all = await plans();
+    const existing = all.find((plan) => plan.month === data.month)?.buyerParticipations;
+    const december = all.find((plan) => plan.month === "2026-12")?.buyerParticipations;
+    const source = existing ?? december;
+    if (!source) throw new Error("Participações dos compradores não encontradas.");
+    const shares = BUYERS.map((buyer) => Number(source[buyer] ?? 0));
+    const budgetCents = Math.round(data.salesCents * data.cmvPercent / 100);
+    const amounts = allocateBudgetCents(budgetCents, shares);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.rpc("save_purchase_month_plan", {
+      p_month: data.month, p_budget: budgetCents,
+      p_shares: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, shares[index] ?? 0])),
+      p_allocations: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, amounts[index] ?? 0])),
+    });
+    if (error) throw new Error(error.message);
+    await insertAuditEvent({ eventType: "simulation", actor: { route: "/metas" }, details: { action: "goal-month-plan", month: data.month, salesCents: data.salesCents, cmvPercent: data.cmvPercent, budgetCents, allocations: Object.fromEntries(BUYERS.map((buyer, index) => [buyer, amounts[index] ?? 0])) } });
+    return { budgetCents, salesCents: data.salesCents, allocations: BUYERS.map((buyer, index) => ({ buyer, cents: amounts[index] ?? 0, share: shares[index] ?? 0 })) };
+  });

@@ -6,7 +6,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
 import { BUYERS, BUYER_BUSINESS_RULES, CRITICAL_DAYS, CRITICAL_FACTOR, WEEKDAY_LABELS, WEEKDAY_WEIGHTS } from "@/lib/buyerRules";
 import { getBuyerGoalConfigs, getBuyerMonthlyOverview, repairNovemberDashboardBudgets, saveBuyerGoalConfig } from "@/lib/buyer.functions";
-import { listCashFlow } from "@/lib/cashflow.functions";
+import { listCashFlow, listCashFlowMonthBudgets, saveGoalMonthPlan } from "@/lib/cashflow.functions";
+import { allocateBudgetCents } from "@/lib/purchaseValidation";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import { money, parseBRL } from "./format";
 import { MonthlyPurchasePlan } from "./MonthlyPurchasePlan";
@@ -126,9 +127,58 @@ export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: b
   );
 }
 
+const GOAL_PERIODS = [{ value: "2026-12", label: "Dezembro/2026" }, { value: "2027-01", label: "Janeiro/2027" }] as const;
+
+function JanuaryGoalPanel() {
+  const queryClient = useQueryClient();
+  const plans = useQuery({ queryKey: ["cash-flow-month-budgets"], queryFn: () => listCashFlowMonthBudgets() });
+  const december = useQuery({ queryKey: ["buyer-goal-configs", "2026-12"], queryFn: () => getBuyerGoalConfigs({ data: { period: "2026-12" } }) });
+  const january = useQuery({ queryKey: ["buyer-goal-configs", "2027-01"], queryFn: () => getBuyerGoalConfigs({ data: { period: "2027-01" } }) });
+  const [sales, setSales] = useState("");
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const cmv = december.data?.[0]?.cmvPercent ?? 60;
+  const plan = plans.data?.find((item) => item.month === "2027-01");
+  const shares = BUYERS.map((buyer) => Number((plan?.buyerParticipations ?? plans.data?.find((item) => item.month === "2026-12")?.buyerParticipations)?.[buyer] ?? 0));
+  const savedSalesCents = (january.data ?? []).reduce((total, item) => total + item.salesCents, 0);
+  const salesCents = sales ? Math.round(parseBRL(sales) * 100) : savedSalesCents;
+  const budgetCents = sales ? Math.round(salesCents * cmv / 100) : plan?.budgetCents ?? 0;
+  let amounts: number[] = [];
+  try { amounts = budgetCents > 0 ? allocateBudgetCents(budgetCents, shares) : []; } catch { /* sem participações */ }
+  const save = async () => {
+    setSaving(true);
+    try {
+      const result = await saveGoalMonthPlan({ data: { password, month: "2027-01", salesCents, cmvPercent: cmv } });
+      const salesSplit = allocateBudgetCents(salesCents, result.allocations.map((item) => item.share));
+      for (const [index, item] of result.allocations.entries()) {
+        await saveBuyerGoalConfig({ data: { period: "2027-01", buyer: item.buyer, salesCents: salesSplit[index] ?? 0, monthlyCents: item.cents, cmvPercent: cmv, ips: december.data?.find((config) => config.buyer === item.buyer)?.ips ?? [] } });
+      }
+      setSales("");
+      await queryClient.invalidateQueries();
+      toast.success("Dotação de janeiro/2027 salva. O mês está disponível no fluxo.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível salvar janeiro/2027."); }
+    finally { setSaving(false); }
+  };
+  return <>
+    <section className="card december-allocation-note">
+      <strong>Dotação oficial de janeiro/2027</strong>
+      <span>Venda prevista: {money(salesCents / 100)} · fórmula: {String(cmv).replace(".", ",")}% · dotação total: {money(budgetCents / 100)}{plan && !sales ? " (salva)" : sales ? " (prévia, ainda não salva)" : ""}</span>
+      <small>{BUYERS.map((buyer, index) => `${buyer} ${String(shares[index] ?? 0).replace(".", ",")}%: ${money((amounts[index] ?? 0) / 100)}`).join(" · ")}. A soma das dotações fecha exatamente o total do mês.</small>
+    </section>
+    <section className="card goals-card">
+      <div className="card-heading"><div><h2>Venda mensal prevista — Janeiro/2027</h2><p>Os demais campos usam a configuração já salva.</p></div></div>
+      <div className="form-stack">
+        <label>Venda mensal prevista (R$)<input inputMode="decimal" value={sales} placeholder={savedSalesCents ? money(savedSalesCents / 100) : "0,00"} onChange={(event) => setSales(event.target.value.replace(/^R\$\s*/, ""))} /></label>
+        <label>Senha de acesso<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <button className="btn btn-dark" onClick={save} disabled={saving || salesCents <= 0 || plans.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar janeiro/2027"}</button>
+      </div>
+    </section>
+  </>;
+}
+
 function BuyerGoalsForm() {
   const queryClient = useQueryClient();
-  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [period, setPeriod] = useState("2026-12");
   const [monthly, setMonthly] = useState<Record<string, MonthlyBuyerConfig>>({});
   const [profiles, setProfiles] = useState<Record<string, BuyerProfile>>({});
   const [saving, setSaving] = useState(false);
@@ -195,15 +245,16 @@ function BuyerGoalsForm() {
   return (
     <>
       <div className="card-heading" style={{ marginBottom: "1rem" }}>
-        <label>Período<input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} /></label>
-        <button className="btn btn-dark" onClick={save} disabled={saving || goalConfigs.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</button>
+        <label>Período<select value={period} onChange={(event) => setPeriod(event.target.value)}>{GOAL_PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
+        {period !== "2027-01" && <button className="btn btn-dark" onClick={save} disabled={saving || goalConfigs.isLoading}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</button>}
       </div>
       {period === "2026-12" && <section className="card december-allocation-note">
         <strong>Dotação oficial de dezembro/2026</strong>
         <span>Venda-base cadastrada: {money(DECEMBER_ALLOCATION_BASE.salesCents / 100)} · fórmula: 60% · dotação total: {money(DECEMBER_ALLOCATION_BASE.allocationCents / 100)}</span>
         <small>Participações congeladas da base de novembro: Marcelo 40,61% · Suellen 32,54% · Maurício 26,86%. A soma das dotações dos compradores fecha exatamente o total do mês.</small>
       </section>}
-      <div style={{ display: "block" }}>
+      {period === "2027-01" && <JanuaryGoalPanel />}
+      <div style={{ display: period === "2027-01" ? "none" : "block" }}>
         <section className="card goals-card">
           <div className="card-heading"><div><h2>Meta por comprador</h2><p>Venda mensal, CMV informativo e IPs vinculados.</p></div></div>
           <div className="goals-table-wrap"><table className="goals-table"><thead><tr><th>Comprador</th><th>Venda do mês (R$)</th><th>% CMV alvo</th><th>IPs vinculados</th><th>Dotação mensal (R$)</th><th>Participação</th></tr></thead><tbody>

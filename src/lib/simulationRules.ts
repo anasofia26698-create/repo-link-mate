@@ -126,10 +126,17 @@ export function getPurchaseRatioForDate(date: string): number {
   return PURCHASE_RATIO;
 }
 
+let registeredDailySalesCents: ReadonlyMap<string, number> = new Map();
+/** Vendas do dia registradas no fluxo (centavos) substituem a venda média do dia da semana. */
+export function setRegisteredDailySales(sales: ReadonlyMap<string, number>) {
+  registeredDailySalesCents = sales;
+}
+
 export function getPurchaseLimitForDate(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   const weekday = parsed.getDay();
-  const averageSales = WEEKDAY_AVERAGE_SALES[weekday] ?? 0;
+  const registered = registeredDailySalesCents.get(date);
+  const averageSales = registered !== undefined ? registered / 100 : WEEKDAY_AVERAGE_SALES[weekday] ?? 0;
   const weekdayLimit = averageSales * getPurchaseRatioForDate(date);
   const isCritical = CRITICAL_PAYMENT_DAYS.includes(parsed.getDate() as typeof CRITICAL_PAYMENT_DAYS[number]);
   return {
