@@ -8,7 +8,7 @@ describe("monthly buyer goals", () => {
   });
   it("preserves December at R$ 1.974.368,00 when saved", () => {
     expect(goalMonthAmounts("2026-12", 329061333, shares).budgetCents).toBe(197436800);
-    expect(goalMonthAmounts("2026-12", 329061333, shares).allocations).toEqual([80171060, 64239510, 53026220]);
+    expect(goalMonthAmounts("2026-12", 329061333, shares).allocations).toEqual([80171070, 64239510, 53026220]);
   });
   it("keeps months without sales at zero", () => {
     expect(goalMonthAmounts("2027-06", 0, shares)).toEqual({ budgetCents: 0, allocations: [0, 0, 0] });
