@@ -1,8 +1,8 @@
 import { getMonthlyPurchaseDay } from "./simulationRules";
 
-export const FLOW_MONTHS = ["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06"] as const;
+export const FLOW_MONTHS = ["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"] as const;
 export const PAYMENT_START = "2026-11-13";
-export const PAYMENT_END = "2027-06-30";
+export const PAYMENT_END = "2027-12-31";
 export const monthLabel = (month: string) => new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 export const missingBudgetMessage = (month: string) => `Orçamento de ${monthLabel(month)} não cadastrado`;
 export function businessToday(now = new Date()): string {
@@ -11,7 +11,7 @@ export function businessToday(now = new Date()): string {
 }
 export function paymentDateError(date: string, today = businessToday()): string | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T12:00:00Z`)) || new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) return "Data prevista inválida";
-  if (date > PAYMENT_END) return "Simulação disponível somente até 30/06/2027";
+  if (date > PAYMENT_END) return "Simulação disponível somente até 31/12/2027";
   if (date < today) return "Datas anteriores à data de hoje não são permitidas";
   if (date < PAYMENT_START) return "Simulação disponível a partir de 13/11/2026";
   return null;

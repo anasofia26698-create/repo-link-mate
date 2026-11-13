@@ -54,7 +54,10 @@ type Entry = { id: string; date: string; debit: number; source: "imported" | "ma
 type Tab = "fluxo" | "importar" | "metas" | "dashboard" | "auditoria" | "comprador";
 
 const AUDIT_ACCESS_SESSION_KEY = "signal-cash-audit-access-recorded";
-const FLOW_MONTH_LABELS: Record<string, string> = { "2026-12": "Dezembro/2026", "2027-01": "Janeiro/2027", "2027-02": "Fevereiro/2027", "2027-03": "Março/2027", "2027-04": "Abril/2027", "2027-05": "Maio/2027", "2027-06": "Junho/2027" };
+const FLOW_MONTH_LABELS: Record<string, string> = Object.fromEntries(FLOW_MONTHS.map((month) => {
+  const label = new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(" de ", "/");
+  return [month, label.charAt(0).toUpperCase() + label.slice(1)];
+}));
 type BuyerChartPoint = { day: string } & Record<(typeof BUYERS)[number], number>;
 function getTightenedFlowLimit(date: string, debit: number, factor: number) {
   const target = getPurchaseLimitForDate(date);
@@ -144,6 +147,11 @@ function HomePage() {
     return new Map((auditBudgets.data ?? []).map((item) => [item.month, item.budgetCents]));
   }, [auditBudgets.data, dailySales.data]);
   const availableFlowMonths = useMemo(() => FLOW_MONTHS.filter((month) => (configuredBudgetMap.get(month) ?? 0) > 0), [configuredBudgetMap]);
+  useEffect(() => {
+    if (auditBudgets.isSuccess && availableFlowMonths.length && !availableFlowMonths.includes(selectedFlowMonth as (typeof FLOW_MONTHS)[number])) {
+      setSelectedFlowMonth(availableFlowMonths[0] ?? "");
+    }
+  }, [auditBudgets.isSuccess, availableFlowMonths, selectedFlowMonth]);
   const [saleDate, setSaleDate] = useState("");
   const [saleValue, setSaleValue] = useState("");
   const [salePassword, setSalePassword] = useState("");
@@ -511,7 +519,7 @@ function HomePage() {
                 <label>
                   Mês do fluxo
                   <select value={selectedFlowMonth} onChange={(event) => setSelectedFlowMonth(event.target.value)}>
-                    {(availableFlowMonths.length ? availableFlowMonths : ["2026-12"]).map((month) => <option key={month} value={month}>{FLOW_MONTH_LABELS[month]}</option>)}
+                    {availableFlowMonths.map((month) => <option key={month} value={month}>{FLOW_MONTH_LABELS[month]}</option>)}
                   </select>
                 </label>
               </div>

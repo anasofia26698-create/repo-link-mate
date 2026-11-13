@@ -34,7 +34,7 @@ export function MonthlyPurchasePlan() {
     <div className="card-heading"><h2>Orçamento mensal do fluxo</h2></div>
     <div className="form-stack">
       <label>Mês do orçamento<select value={month} onChange={(event) => setMonth(event.target.value)}>{FLOW_MONTHS.map((item) => <option key={item} value={item}>{monthLabel(item)}</option>)}</select></label>
-      {month === "2026-12" ? <p>Dezembro preservado: orçamento {money(1974368)} e dotações atuais dos compradores mantidas.</p> : <>
+      {month === "2026-11" || month === "2026-12" ? <p>{month === "2026-11" ? "Novembro" : "Dezembro"} preservado: orçamento {money(month === "2026-11" ? 1891469 : 1974368)} e dotações atuais dos compradores mantidas.</p> : <>
         <label>Orçamento de compra do mês<input inputMode="decimal" value={draft.budget} onChange={(event) => update({ budget: event.target.value })} placeholder="0,00" /></label>
         {BUYERS.map((buyer, index) => <label key={buyer}>Participação — {buyer} (%)<input inputMode="decimal" value={draft.shares[index] ?? ""} onChange={(event) => update({ shares: draft.shares.map((value, i) => i === index ? event.target.value : value) })} /><small>Dotação: {money((amounts[index] ?? 0) / 100)}</small></label>)}
         <label>Senha de acesso<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>

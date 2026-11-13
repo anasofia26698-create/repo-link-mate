@@ -50,7 +50,7 @@ export const savePurchaseMonthPlan = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { isPurchaseAccessGranted } = await import("./purchaseRules");
     if (!isPurchaseAccessGranted(data.password)) throw new Error("Senha incorreta.");
-    if (data.month === "2026-12") throw new Error("Os valores atuais de dezembro estão preservados.");
+    if (data.month === "2026-11" || data.month === "2026-12") throw new Error("Os valores atuais de novembro e dezembro estão preservados.");
     const amounts = allocateBudgetCents(data.budgetCents, data.shares);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.rpc("save_purchase_month_plan", {

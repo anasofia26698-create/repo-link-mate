@@ -3,10 +3,11 @@ import { allocateBudgetCents, FLOW_MONTHS, paymentDateError, purchaseRejection, 
 import { getMonthlyPurchaseDay, getPurchaseLimitForDate } from "./simulationRules";
 
 describe("payment window", () => {
-  it("lists the seven months December through June", () => expect([...FLOW_MONTHS]).toEqual(["2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06"]));
+  it("lists November 2026 through December 2027 chronologically", () => expect([...FLOW_MONTHS]).toEqual(["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]));
   it("accepts November 13", () => expect(paymentDateError("2026-11-13", "2026-11-12")).toBeNull());
   it("accepts June 30", () => expect(paymentDateError("2027-06-30", "2026-11-12")).toBeNull());
-  it("rejects July 1", () => expect(paymentDateError("2027-07-01", "2026-11-12")).toBe("Simulação disponível somente até 30/06/2027"));
+  it("accepts December 31 2027", () => expect(paymentDateError("2027-12-31", "2026-11-12")).toBeNull());
+  it("rejects January 1 2028", () => expect(paymentDateError("2028-01-01", "2026-11-12")).toBe("Simulação disponível somente até 31/12/2027"));
   it("rejects dates before today", () => expect(paymentDateError("2026-11-13", "2026-11-14")).toBe("Datas anteriores à data de hoje não são permitidas"));
 });
 describe("values and terms", () => {
@@ -18,6 +19,9 @@ describe("values and terms", () => {
   it("closes allocations with the remainder assigned to the largest share", () => expect(allocateBudgetCents(100, [40.61, 32.54, 26.86])).toEqual([40, 33, 27]));
 });
 describe("monthly availability", () => {
+  it("preserves November's saved budget", () => expect(getMonthlyPurchaseDay("2026-11-13", new Map(), new Map([["2026-11", 189146900]])).budgetCents).toBe(189146900));
+  it("blocks December 2027 without a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map(), "2026-11-13")).toBe("Orçamento de dezembro de 2027 não cadastrado"));
+  it("accepts December 2027 with a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map([["2027-12", 10000000]]), "2026-11-13")).toBeNull());
   const budgets = new Map([["2026-12", 197436800], ["2027-02", 10000000], ["2027-06", 10000000]]);
   it("keeps the December budget and sixty percent daily goal", () => {
     const day = getMonthlyPurchaseDay("2026-12-01", new Map(), budgets);
