@@ -291,7 +291,7 @@ function HomePage() {
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
   const missingBudgetScenario = dueDates.find((scenario) => (configuredBudgetMap.get(scenario.date.slice(0, 7)) ?? 0) <= 0);
-  const confirmationBlock = missingBudgetScenario ? missingBudgetMessage(missingBudgetScenario.date.slice(0, 7)) : null;
+  const confirmationBlock = missingBudgetScenario ? missingBudgetMessage(missingBudgetScenario.date.slice(0, 7)) : dueDates.some((scenario) => scenario.installment < 0.01) ? "Valor da parcela muito baixo: informe um valor total maior" : null;
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
