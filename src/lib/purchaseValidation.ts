@@ -4,7 +4,7 @@ export const FLOW_MONTHS = ["2026-11", "2026-12", "2027-01", "2027-02", "2027-03
 export const PAYMENT_START = "2026-11-13";
 export const PAYMENT_END = "2027-12-31";
 export const monthLabel = (month: string) => new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
-export const missingBudgetMessage = (month: string) => `Orçamento de ${monthLabel(month)} não cadastrado`;
+export const missingBudgetMessage = (month: string) => `Orçamento de ${monthLabel(month)} não cadastrado. Cadastre a venda do mês na página Cadastro de Metas.`;
 export function businessToday(now = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
   return ["year", "month", "day"].map((type) => parts.find((part) => part.type === type)?.value ?? "").join("-");
@@ -23,7 +23,7 @@ export function termError(terms: readonly number[]): string | null {
   return !terms.length || terms.some((term) => !Number.isInteger(term) || term < 1 || term > 230) ? "Prazo em dias deve ser um número inteiro entre 1 e 230" : null;
 }
 export function splitInstallmentCents(totalCents: number, count: number): number[] {
-  if (!Number.isSafeInteger(totalCents) || totalCents < 1 || count < 1) return [];
+  if (!Number.isSafeInteger(totalCents) || !Number.isInteger(count) || count < 1 || totalCents < count) return [];
   const base = Math.floor(totalCents / count);
   return Array.from({ length: count }, (_, index) => base + (index < totalCents % count ? 1 : 0));
 }

@@ -1,5 +1,4 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { TEMPORARY_ENTRY_TTL_MS } from "./flowRules";
 import { isCriticalDate } from "./buyerRules";
 import { missingBudgetMessage, purchaseRejection } from "./purchaseValidation";
 import { setRegisteredDailySales, getAutomaticRecoveryForDate, getAutomaticRecoverySummary, getPurchaseLimitForDate, OCTOBER_BASE_BUDGET_CENTS, OCTOBER_TIGHTENING_FACTOR, OCTOBER_TIGHTENING_THRESHOLD } from "./simulationRules";
@@ -26,21 +25,7 @@ export type Actor = {
   route?: string | undefined;
 };
 
-function ttlCutoffIso() {
-  return new Date(Date.now() - TEMPORARY_ENTRY_TTL_MS).toISOString();
-}
-
-/** Manual entries older than 7 days stop affecting the shared flow. */
-export async function purgeExpiredManualEntries() {
-  await supabaseAdmin
-    .from("cash_flow_entries")
-    .delete()
-    .eq("source", "manual")
-    .lt("created_at", ttlCutoffIso());
-}
-
 export async function listSharedEntries(): Promise<SharedEntry[]> {
-  await purgeExpiredManualEntries();
   const { data, error } = await supabaseAdmin
     .from("cash_flow_entries")
     .select("id,date,debit_cents,source,created_at")

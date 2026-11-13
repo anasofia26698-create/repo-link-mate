@@ -290,6 +290,8 @@ function HomePage() {
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
+  const missingBudgetScenario = dueDates.find((scenario) => (configuredBudgetMap.get(scenario.date.slice(0, 7)) ?? 0) <= 0);
+  const confirmationBlock = missingBudgetScenario ? missingBudgetMessage(missingBudgetScenario.date.slice(0, 7)) : null;
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
@@ -650,13 +652,16 @@ function HomePage() {
                   </div>
                   <Button
                     className="btn btn-dark full confirm-purchase-btn"
+                    disabled={Boolean(confirmationBlock) || confirmMutation.isPending}
+                    title={confirmationBlock ?? undefined}
                     onClick={() => {
-                      setSelectedTerms(dueDates.map((scenario) => scenario.term));
+                      setSelectedTerms(dueDates.filter((scenario) => scenario.canBuy).map((scenario) => scenario.term));
                       setShowConfirm(true);
                     }}
                   >
                     Confirmar compra nessas parcelas
                   </Button>
+                  {confirmationBlock && <p className="red-text" role="alert">{confirmationBlock}</p>}
                 </section>
               )}
             </div>
@@ -833,7 +838,7 @@ function HomePage() {
               </button>
             </div>
             <p className="modal-description">
-              Selecione as parcelas que foram confirmadas. As parcelas escolhidas entram no fluxo nas datas previstas e ficam temporárias por 7 dias.
+              Selecione as parcelas confirmadas. Elas entram no fluxo nas datas previstas e atualizam o orçamento e o saldo do comprador responsável.
             </p>
             <label className="audit-name-field">
               Seu nome
@@ -851,6 +856,7 @@ function HomePage() {
                 <label className="confirmation-term" key={scenario.term}>
                   <input
                     type="checkbox"
+                    disabled={!scenario.canBuy}
                     checked={selectedTerms.includes(scenario.term)}
                     onChange={(event) =>
                       setSelectedTerms((current) =>
@@ -868,12 +874,12 @@ function HomePage() {
               ))}
             </div>
             <div className="modal-actions">
-              <button className="btn btn-light" onClick={() => setShowConfirm(false)}>
+              <Button className="btn btn-light" onClick={() => setShowConfirm(false)}>
                 Cancelar
-              </button>
-              <button className="btn btn-dark" onClick={confirmPurchase}>
+              </Button>
+              <Button className="btn btn-dark" disabled={Boolean(confirmationBlock) || confirmMutation.isPending || !selectedTerms.length} onClick={confirmPurchase}>
                 Confirmar e atualizar fluxo
-              </button>
+              </Button>
             </div>
           </div>
         </div>
