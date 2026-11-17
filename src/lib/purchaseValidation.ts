@@ -31,6 +31,9 @@ export function confirmationBlockReason(scenarios: readonly { date: string; inst
   if (missing) return missingBudgetMessage(missing.date.slice(0, 7));
   return scenarios.some((scenario) => scenario.installment < 0.01) ? "Valor da parcela muito baixo: informe um valor total maior" : null;
 }
+export function approvedConfirmationScenarios<T extends { canBuy: boolean }>(scenarios: readonly T[]): T[] {
+  return scenarios.filter((scenario) => scenario.canBuy);
+}
 export function splitInstallmentCents(totalCents: number, count: number): number[] {
   if (!Number.isSafeInteger(totalCents) || !Number.isInteger(count) || count < 1 || totalCents < count) return [];
   const base = Math.floor(totalCents / count);

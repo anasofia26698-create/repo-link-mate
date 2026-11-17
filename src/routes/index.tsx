@@ -6,7 +6,7 @@ import { CartesianGrid, Legend, Line, LineChart, ReferenceDot, ResponsiveContain
 import { toast } from "sonner";
 import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
-import { FLOW_MONTH_STORAGE_KEY, flowReferenceDate, restoredFlowMonth, scenariosForFlowMonth } from "@/lib/flowMonthView";
+import { FLOW_MONTH_STORAGE_KEY, restoredFlowMonth } from "@/lib/flowMonthView";
 import {
   calculateDaysFromReference,
   getAutomaticRecoveryForDate,
@@ -20,7 +20,7 @@ import {
   OCTOBER_TIGHTENING_THRESHOLD,
 } from "@/lib/simulationRules";
 import { BUYERS } from "@/lib/buyerRules";
-import { FLOW_MONTHS, confirmationBlockReason, missingBudgetMessage, parsePurchaseTerms, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "@/lib/purchaseValidation";
+import { FLOW_MONTHS, approvedConfirmationScenarios, confirmationBlockReason, missingBudgetMessage, parsePurchaseTerms, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "@/lib/purchaseValidation";
 import { Button } from "@/components/ui/button";
 import { confirmPurchases, listCashFlowMonthBudgets, listCashFlow, listDailySales, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
 import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
@@ -87,11 +87,11 @@ function HomePage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("fluxo");
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [today, setToday] = useState(iso(new Date()));
+  const [today, setToday] = useState("");
   const [selectedFlowMonth, setSelectedFlowMonth] = useState("2026-12");
   const [flowMonthRestored, setFlowMonthRestored] = useState(false);
   const [responsibleBuyer, setResponsibleBuyer] = useState<(typeof BUYERS)[number] | "">("");
-  const [displayToday, setDisplayToday] = useState(() => iso(new Date()));
+  const [displayToday, setDisplayToday] = useState("");
   const [purchaseInput, setPurchaseInput] = useState("48.000,00");
   const [termsInput, setTermsInput] = useState("30, 60, 90");
   const [simulationMode, setSimulationMode] = useState<"terms" | "dates">("terms");
@@ -127,6 +127,7 @@ function HomePage() {
 
 
   useEffect(() => {
+    setToday(iso(new Date()));
     const refreshDisplayDate = () => setDisplayToday(iso(new Date()));
     const timer = window.setInterval(refreshDisplayDate, 60_000);
     refreshDisplayDate();
@@ -151,7 +152,6 @@ function HomePage() {
   useEffect(() => {
     const month = restoredFlowMonth(localStorage.getItem(FLOW_MONTH_STORAGE_KEY));
     setSelectedFlowMonth(month);
-    setToday((current) => flowReferenceDate(month, current));
     setFlowMonthRestored(true);
   }, []);
   useEffect(() => {
@@ -159,11 +159,6 @@ function HomePage() {
   }, [flowMonthRestored, selectedFlowMonth]);
   const changeFlowMonth = (month: string) => {
     setSelectedFlowMonth(month);
-    setToday((current) => flowReferenceDate(month, current));
-    setPaymentDatesInput("");
-    setSimulated(false);
-    setShowConfirm(false);
-    setSelectedTerms([]);
   };
 
   const octoberBudgetExceededCents = useMemo(() => {
@@ -268,6 +263,7 @@ function HomePage() {
   const paymentDates = parsePaymentDates(paymentDatesInput);
 
   const allDueDates = useMemo(() => {
+    if (!today) return [];
     const parsed =
       simulationMode === "dates"
         ? paymentDates.map((item) => ({ date: item.date, term: calculateDaysFromReference(today, item.date) }))
@@ -289,16 +285,21 @@ function HomePage() {
       return { term, date, existing, installment, reason, remainingBudget: monthlyDay.remainingBudgetCents / 100, limit: monthlyDay.limitCents / 100, weekday: target.weekday, isCritical: target.isCritical, isFrozen: monthlyDay.frozen, budgetBlocked: monthlyDay.monthBlocked, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, configuredBudgetMap, octoberTighteningFactor, octoberBudgetBlocked]);
-  const dueDates = useMemo(() => scenariosForFlowMonth(allDueDates, selectedFlowMonth), [allDueDates, selectedFlowMonth]);
+  const dueDates = allDueDates;
+  const approvedScenarios = approvedConfirmationScenarios(dueDates);
   const selectedMonthMissingBudget = (configuredBudgetMap.get(selectedFlowMonth) ?? 0) <= 0;
   const selectedMonthBudgetMessage = missingBudgetMessage(selectedFlowMonth);
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
-  const confirmationBlock = selectedMonthMissingBudget ? selectedMonthBudgetMessage : !dueDates.length ? "Nenhuma parcela prevista para o mês selecionado." : confirmationBlockReason(dueDates, configuredBudgetMap);
+  const confirmationBlock = approvedScenarios.length
+    ? confirmationBlockReason(approvedScenarios, configuredBudgetMap)
+    : dueDates[0]?.reason ?? "Nenhuma parcela disponível para confirmação.";
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
+    const selectedBlock = confirmationBlockReason(selected, configuredBudgetMap);
+    if (selectedBlock) { toast.error(selectedBlock); return; }
     const responsible = actorName.trim();
     if (!selected.length) {
       toast.error("Selecione pelo menos um prazo para confirmar a compra.");
@@ -356,6 +357,10 @@ function HomePage() {
   };
 
   const simulate = () => {
+    if (!today || Number.isNaN(Date.parse(`${today}T12:00:00`))) {
+      toast.error("Informe uma data de hoje válida.");
+      return;
+    }
     if (purchase <= 0 || !Number.isFinite(purchase)) {
       toast.error("Valor total da compra deve ser maior que zero");
       return;
@@ -376,7 +381,7 @@ function HomePage() {
       toast.error("Informe pelo menos um prazo em dias.");
       return;
     }
-    const invalidDate = allDueDates.map((scenario) => paymentDateError(scenario.date)).find(Boolean);
+    const invalidDate = allDueDates.map((scenario) => scenario.date > "2027-12-31" ? null : paymentDateError(scenario.date)).find(Boolean);
     if (invalidDate) { toast.error(invalidDate); return; }
     if (dueDates.some((scenario) => scenario.installment < 0.01)) {
       toast.error("Valor da parcela muito baixo: informe um valor total maior");
@@ -589,7 +594,6 @@ function HomePage() {
                       <small className="field-hint">Informe uma ou mais datas separadas por vírgula. O valor será dividido igualmente.</small>
                     </label>
                   )}
-                  {selectedMonthMissingBudget && <p className="red-text" role="alert"><strong>NÃO PODE COMPRAR</strong> · {selectedMonthBudgetMessage}</p>}
                 </div>
                 <Button className="btn btn-primary full" onClick={simulate}>
                   Simular compra
@@ -604,7 +608,6 @@ function HomePage() {
                     </div>
                   </div>
                   <div className="scenario-list">
-                    {!dueDates.length && <p className="red-text">{selectedMonthMissingBudget ? selectedMonthBudgetMessage : "Nenhuma parcela prevista para o mês selecionado."}</p>}
                     {dueDates.map((scenario) => (
                       <div className={"scenario " + (scenario.canBuy ? "scenario-ok" : "scenario-risk")} key={scenario.term}>
                         <div className="scenario-title">
@@ -615,6 +618,7 @@ function HomePage() {
                           <div>
                             <span>Data prevista</span>
                             <strong>{dateBR(scenario.date)}</strong>
+                            <small>Cai em {new Date(`${scenario.date}T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).replace(" de ", "/")}</small>
                           </div>
                           <div>
                             <span>Prazo</span>
@@ -661,7 +665,7 @@ function HomePage() {
                     disabled={Boolean(confirmationBlock) || confirmMutation.isPending}
                     title={confirmationBlock ?? undefined}
                     onClick={() => {
-                      setSelectedTerms(dueDates.filter((scenario) => scenario.canBuy).map((scenario) => scenario.term));
+                      setSelectedTerms(approvedScenarios.map((scenario) => scenario.term));
                       setShowConfirm(true);
                     }}
                   >

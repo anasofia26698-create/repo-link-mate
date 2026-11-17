@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocateBudgetCents, confirmationBlockReason, FLOW_MONTHS, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "./purchaseValidation";
+import { allocateBudgetCents, approvedConfirmationScenarios, confirmationBlockReason, FLOW_MONTHS, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "./purchaseValidation";
 import { getMonthlyPurchaseDay, getPurchaseLimitForDate } from "./simulationRules";
 
 describe("payment window", () => {
@@ -21,6 +21,17 @@ describe("values and terms", () => {
 });
 describe("confirmation eligibility", () => {
   const budgets = new Map([["2026-12", 197436800], ["2027-01", 60000000], ["2027-12", 60000000]]);
+  it("offers only approved installments when other payment months have no budget", () => {
+    const scenarios = ["2026-12-17", "2027-01-16", "2027-02-15"].map((date) => ({
+      date, installment: 0.67, canBuy: purchaseRejection(date, 67, new Map(), new Map([["2026-12", 197436800]]), "2026-11-17") === null,
+    }));
+    const approved = approvedConfirmationScenarios(scenarios);
+    expect(approved.map((scenario) => scenario.date)).toEqual(["2026-12-17"]);
+    expect(confirmationBlockReason(approved, budgets, "2026-11-17")).toBeNull();
+  });
+  it("offers no confirmation when every installment is rejected", () => {
+    expect(approvedConfirmationScenarios([{ canBuy: false, date: "2028-01-01" }])).toEqual([]);
+  });
   it("blocks all confirmation when one installment has no saved budget", () => {
     expect(confirmationBlockReason([{ date: "2026-12-13", installment: 1 }, { date: "2027-02-11", installment: 1 }], budgets, "2026-11-17")).toBe("Orçamento de fevereiro de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas.");
   });
