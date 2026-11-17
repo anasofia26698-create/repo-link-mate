@@ -8,6 +8,6 @@
 - [x] Validate confirmations against day/month availability and update shared views immediately.
 - [x] Test concrete business rules and verify the simulator in the browser.
 - [x] Extend buyer goal periods through June, inherit configuration, preserve December and warn about unsaved changes.
-- [ ] Await monthly sales amounts before enabling unsaved months in the flow.
+- [x] Show all 14 flow months, remember the selection and synchronize month-specific simulator, confirmation and financial views; keep unsaved months blocked for purchases.
 - [x] Verify the saved-sales gate through December 2027 and block invalid payment dates before opening confirmation without changing goals or imports.
 - [x] Extend flow selection and both client/server payment and budget validation through December 2027, preserving existing months.

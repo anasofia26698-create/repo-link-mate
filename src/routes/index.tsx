@@ -6,6 +6,7 @@ import { CartesianGrid, Legend, Line, LineChart, ReferenceDot, ResponsiveContain
 import { toast } from "sonner";
 import { AlertTriangle, Menu, X } from "lucide-react";
 import { isTemporaryEntryActive } from "@/lib/flowRules";
+import { FLOW_MONTH_STORAGE_KEY, flowReferenceDate, restoredFlowMonth, scenariosForFlowMonth } from "@/lib/flowMonthView";
 import {
   calculateDaysFromReference,
   getAutomaticRecoveryForDate,
@@ -88,6 +89,7 @@ function HomePage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [today, setToday] = useState(iso(new Date()));
   const [selectedFlowMonth, setSelectedFlowMonth] = useState("2026-12");
+  const [flowMonthRestored, setFlowMonthRestored] = useState(false);
   const [responsibleBuyer, setResponsibleBuyer] = useState<(typeof BUYERS)[number] | "">("");
   const [displayToday, setDisplayToday] = useState(() => iso(new Date()));
   const [purchaseInput, setPurchaseInput] = useState("48.000,00");
@@ -146,12 +148,23 @@ function HomePage() {
     setRegisteredDailySales(new Map((dailySales.data ?? []).map((item) => [item.date, item.salesCents])));
     return new Map((auditBudgets.data ?? []).map((item) => [item.month, item.budgetCents]));
   }, [auditBudgets.data, dailySales.data]);
-  const availableFlowMonths = useMemo(() => FLOW_MONTHS.filter((month) => (configuredBudgetMap.get(month) ?? 0) > 0), [configuredBudgetMap]);
   useEffect(() => {
-    if (auditBudgets.isSuccess && availableFlowMonths.length && !availableFlowMonths.includes(selectedFlowMonth as (typeof FLOW_MONTHS)[number])) {
-      setSelectedFlowMonth(availableFlowMonths[0] ?? "");
-    }
-  }, [auditBudgets.isSuccess, availableFlowMonths, selectedFlowMonth]);
+    const month = restoredFlowMonth(localStorage.getItem(FLOW_MONTH_STORAGE_KEY));
+    setSelectedFlowMonth(month);
+    setToday((current) => flowReferenceDate(month, current));
+    setFlowMonthRestored(true);
+  }, []);
+  useEffect(() => {
+    if (flowMonthRestored) localStorage.setItem(FLOW_MONTH_STORAGE_KEY, selectedFlowMonth);
+  }, [flowMonthRestored, selectedFlowMonth]);
+  const changeFlowMonth = (month: string) => {
+    setSelectedFlowMonth(month);
+    setToday((current) => flowReferenceDate(month, current));
+    setPaymentDatesInput("");
+    setSimulated(false);
+    setShowConfirm(false);
+    setSelectedTerms([]);
+  };
 
   const octoberBudgetExceededCents = useMemo(() => {
     const groups = new Map<string, number>();
@@ -254,7 +267,7 @@ function HomePage() {
   const terms = parsePurchaseTerms(termsInput);
   const paymentDates = parsePaymentDates(paymentDatesInput);
 
-  const dueDates = useMemo(() => {
+  const allDueDates = useMemo(() => {
     const parsed =
       simulationMode === "dates"
         ? paymentDates.map((item) => ({ date: item.date, term: calculateDaysFromReference(today, item.date) }))
@@ -276,10 +289,13 @@ function HomePage() {
       return { term, date, existing, installment, reason, remainingBudget: monthlyDay.remainingBudgetCents / 100, limit: monthlyDay.limitCents / 100, weekday: target.weekday, isCritical: target.isCritical, isFrozen: monthlyDay.frozen, budgetBlocked: monthlyDay.monthBlocked, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, configuredBudgetMap, octoberTighteningFactor, octoberBudgetBlocked]);
+  const dueDates = useMemo(() => scenariosForFlowMonth(allDueDates, selectedFlowMonth), [allDueDates, selectedFlowMonth]);
+  const selectedMonthMissingBudget = (configuredBudgetMap.get(selectedFlowMonth) ?? 0) <= 0;
+  const selectedMonthBudgetMessage = missingBudgetMessage(selectedFlowMonth);
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
-  const confirmationBlock = confirmationBlockReason(dueDates, configuredBudgetMap);
+  const confirmationBlock = selectedMonthMissingBudget ? selectedMonthBudgetMessage : !dueDates.length ? "Nenhuma parcela prevista para o mês selecionado." : confirmationBlockReason(dueDates, configuredBudgetMap);
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
@@ -360,7 +376,7 @@ function HomePage() {
       toast.error("Informe pelo menos um prazo em dias.");
       return;
     }
-    const invalidDate = dueDates.map((scenario) => paymentDateError(scenario.date)).find(Boolean);
+    const invalidDate = allDueDates.map((scenario) => paymentDateError(scenario.date)).find(Boolean);
     if (invalidDate) { toast.error(invalidDate); return; }
     if (dueDates.some((scenario) => scenario.installment < 0.01)) {
       toast.error("Valor da parcela muito baixo: informe um valor total maior");
@@ -508,8 +524,8 @@ function HomePage() {
               <div className="period-control">
                 <label>
                   Mês do fluxo
-                  <select value={selectedFlowMonth} onChange={(event) => setSelectedFlowMonth(event.target.value)}>
-                    {availableFlowMonths.map((month) => <option key={month} value={month}>{FLOW_MONTH_LABELS[month]}</option>)}
+                  <select aria-label="Mês do fluxo" value={selectedFlowMonth} onChange={(event) => changeFlowMonth(event.target.value)}>
+                    {FLOW_MONTHS.map((month) => <option key={month} value={month}>{FLOW_MONTH_LABELS[month]}</option>)}
                   </select>
                 </label>
               </div>
@@ -526,7 +542,7 @@ function HomePage() {
                 <div className="form-stack">
                   <label>
                     Data de hoje
-                    <input type="date" value={today} onChange={(event) => setToday(event.target.value)} />
+                    <input type="date" value={today} onChange={(event) => { setToday(event.target.value); setShowConfirm(false); setSelectedTerms([]); }} />
                   </label>
                   <label>
                     Valor total da compra
@@ -573,6 +589,7 @@ function HomePage() {
                       <small className="field-hint">Informe uma ou mais datas separadas por vírgula. O valor será dividido igualmente.</small>
                     </label>
                   )}
+                  {selectedMonthMissingBudget && <p className="red-text" role="alert"><strong>NÃO PODE COMPRAR</strong> · {selectedMonthBudgetMessage}</p>}
                 </div>
                 <Button className="btn btn-primary full" onClick={simulate}>
                   Simular compra
@@ -587,6 +604,7 @@ function HomePage() {
                     </div>
                   </div>
                   <div className="scenario-list">
+                    {!dueDates.length && <p className="red-text">{selectedMonthMissingBudget ? selectedMonthBudgetMessage : "Nenhuma parcela prevista para o mês selecionado."}</p>}
                     {dueDates.map((scenario) => (
                       <div className={"scenario " + (scenario.canBuy ? "scenario-ok" : "scenario-risk")} key={scenario.term}>
                         <div className="scenario-title">
@@ -675,6 +693,7 @@ function HomePage() {
                   <p>A folga diária de cada comprador é proporcional ao seu saldo, sem ultrapassar o saldo mensal.</p>
                 </div>
               </div>
+              {selectedMonthMissingBudget && <p className="red-text">{selectedMonthBudgetMessage}</p>}
               <div className="purchase-kpis buyer-flow-kpis">
                 {buyerBudgetRows.rows.map((row) => (
                   <div className="summary-card" key={row.buyer}>
@@ -693,7 +712,7 @@ function HomePage() {
                   {buyerBudgetRows.debtsWithoutBuyerCents < 0 ? "As compras do Dashboard são maiores que os débitos importados." : `A seção não bate com o cartão do mês. Diferença: ${money(Math.abs(buyerBudgetRows.reconciliationCents - buyerBudgetRows.rawMonthBalanceCents) / 100)}.`} As folgas por comprador não foram exibidas.
                 </p>
               )}
-              {!buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents <= 0 && (
+              {!selectedMonthMissingBudget && !buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents <= 0 && (
                 <p className="alert alert-red buyer-flow-alert">Sem folga: orçamento do mês ultrapassado.</p>
               )}
               {!buyerMonthMismatch && buyerBudgetRows.rawMonthBalanceCents > 0 && buyerBudgetRows.positiveTotal === 0 && (
@@ -702,6 +721,7 @@ function HomePage() {
             </section>
             <section className="card buyer-flow-chart-card">
               <div className="card-heading"><div><h2>Dias de compra por comprador</h2><p>{FLOW_MONTH_LABELS[selectedFlowMonth]} · volume diário de contas a pagar por comprador.</p></div></div>
+              {selectedMonthMissingBudget && <p className="red-text">{selectedMonthBudgetMessage}</p>}
               <div className="buyer-flow-chart">
                 <ResponsiveContainer width="100%" height={330}>
                   <LineChart data={buyerPurchaseChart.data} margin={{ top: 16, right: 20, left: 14, bottom: 8 }}>
@@ -727,6 +747,7 @@ function HomePage() {
                   </div>
                   <AlertTriangle size={20} />
                 </div>
+                {selectedMonthMissingBudget && <p className="red-text">{selectedMonthBudgetMessage}</p>}
                 <div className="critical-list">
                   {CRITICAL_DAYS_INFO.map((item) => {
                     const date = `${selectedFlowMonth}-${String(item.day).padStart(2, "0")}`;
@@ -753,7 +774,7 @@ function HomePage() {
                         </div>
                         <div className="critical-amount">
                           <b className={frozen || budgetBlocked ? "muted" : exceeded ? "red-text" : "green-text"}>{money(flow?.debit ?? 0)}</b>
-                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : !monthlyDay.budgetConfigured ? "Orçamento do mês não encontrado na Auditoria de Compras" : budgetBlocked ? `BLOQUEADO — Sem orçamento no mês${monthlyDay.totalDebitCents > monthlyDay.budgetCents ? ` em ${money((monthlyDay.totalDebitCents - monthlyDay.budgetCents) / 100)}` : ""}` : flow ? (exceeded ? "Limite do dia ultrapassado" : `${money(monthlyDay.freeCents / 100)} livres`) : "sem débitos"}</small>
+                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : !monthlyDay.budgetConfigured ? selectedMonthBudgetMessage : budgetBlocked ? `BLOQUEADO — Sem orçamento no mês${monthlyDay.totalDebitCents > monthlyDay.budgetCents ? ` em ${money((monthlyDay.totalDebitCents - monthlyDay.budgetCents) / 100)}` : ""}` : flow ? (exceeded ? "Limite do dia ultrapassado" : `${money(monthlyDay.freeCents / 100)} livres`) : "sem débitos"}</small>
                         </div>
                       </div>
                     );
@@ -767,6 +788,7 @@ function HomePage() {
                     <p>Todos os débitos importados, organizados por data e comparados com a meta do dia.</p>
                   </div>
                 </div>
+                {selectedMonthMissingBudget && <p className="red-text">{selectedMonthBudgetMessage}</p>}
                 <div className="timeline-list">
                   {visibleGrouped.map((row) => (
                     <div className="timeline-row" key={row.date}>
@@ -782,7 +804,7 @@ function HomePage() {
                       </div>
                       <div className="timeline-value">
                         <strong className={row.isFrozen || !row.budgetConfigured ? "muted" : row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</strong>
-                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : !row.budgetConfigured ? "Orçamento do mês não encontrado na Auditoria de Compras" : row.budgetBlocked ? `BLOQUEADO — Orçamento do mês ultrapassado em ${money(row.budgetExceededCents / 100)}` : row.exceeded ? "Limite do dia ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
+                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : !row.budgetConfigured ? selectedMonthBudgetMessage : row.budgetBlocked ? `BLOQUEADO — Orçamento do mês ultrapassado em ${money(row.budgetExceededCents / 100)}` : row.exceeded ? "Limite do dia ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
                       </div>
                     </div>
                   ))}
