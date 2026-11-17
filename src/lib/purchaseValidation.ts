@@ -22,6 +22,15 @@ export function parsePurchaseTerms(value: string): number[] {
 export function termError(terms: readonly number[]): string | null {
   return !terms.length || terms.some((term) => !Number.isInteger(term) || term < 1 || term > 230) ? "Prazo em dias deve ser um número inteiro entre 1 e 230" : null;
 }
+export function confirmationBlockReason(scenarios: readonly { date: string; installment: number }[], budgets: ReadonlyMap<string, number>, today = businessToday()): string | null {
+  for (const scenario of scenarios) {
+    const error = paymentDateError(scenario.date, today);
+    if (error) return error;
+  }
+  const missing = scenarios.find((scenario) => (budgets.get(scenario.date.slice(0, 7)) ?? 0) <= 0);
+  if (missing) return missingBudgetMessage(missing.date.slice(0, 7));
+  return scenarios.some((scenario) => scenario.installment < 0.01) ? "Valor da parcela muito baixo: informe um valor total maior" : null;
+}
 export function splitInstallmentCents(totalCents: number, count: number): number[] {
   if (!Number.isSafeInteger(totalCents) || !Number.isInteger(count) || count < 1 || totalCents < count) return [];
   const base = Math.floor(totalCents / count);

@@ -8,7 +8,7 @@ export const DECEMBER_BUYER_CENTS = [80171070, 64239510, 53026220] as const;
 export const DEFAULT_GOAL_SHARES = [40.61, 32.54, 26.86] as const;
 
 export function isGoalMonthEnabled(month: string, budgetCents: number, savedSalesCents: number) {
-  return budgetCents > 0 && (month < "2027-01" || savedSalesCents > 0);
+  return FLOW_MONTHS.some((item) => item === month) && budgetCents > 0 && (month < "2027-01" || savedSalesCents > 0);
 }
 
 export function goalMonthAmounts(month: string, salesCents: number, shares: readonly number[]) {

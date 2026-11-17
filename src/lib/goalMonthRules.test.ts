@@ -5,6 +5,12 @@ describe("monthly buyer goals", () => {
   const shares = [40.61, 32.54, 26.86];
   it("keeps January unavailable until monthly sales are saved", () => expect(isGoalMonthEnabled("2027-01", 60000000, 0)).toBe(false));
   it("enables January after saving monthly sales and its budget", () => expect(isGoalMonthEnabled("2027-01", 60000000, 100000000)).toBe(true));
+  it.each(["2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"])("releases %s only with saved sales and a positive budget", (month) => {
+    expect(isGoalMonthEnabled(month, 60000000, 100000000)).toBe(true);
+    expect(isGoalMonthEnabled(month, 60000000, 0)).toBe(false);
+    expect(isGoalMonthEnabled(month, 0, 100000000)).toBe(false);
+  });
+  it("does not release January 2028 even with saved sales", () => expect(isGoalMonthEnabled("2028-01", 60000000, 100000000)).toBe(false));
   it("offers November 2026 through December 2027 in order", () => {
     expect(GOAL_MONTHS).toEqual(["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]);
   });

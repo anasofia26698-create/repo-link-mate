@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allocateBudgetCents, FLOW_MONTHS, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "./purchaseValidation";
+import { allocateBudgetCents, confirmationBlockReason, FLOW_MONTHS, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "./purchaseValidation";
 import { getMonthlyPurchaseDay, getPurchaseLimitForDate } from "./simulationRules";
 
 describe("payment window", () => {
@@ -18,6 +18,16 @@ describe("values and terms", () => {
   it("allows integer terms 1 through 230", () => expect(termError([1, 230])).toBeNull());
   it.each([0, 231, 1.5])("rejects invalid term %s", (term) => expect(termError([term])).not.toBeNull());
   it("closes allocations with the remainder assigned to the largest share", () => expect(allocateBudgetCents(100, [40.61, 32.54, 26.86])).toEqual([40, 33, 27]));
+});
+describe("confirmation eligibility", () => {
+  const budgets = new Map([["2026-12", 197436800], ["2027-01", 60000000], ["2027-12", 60000000]]);
+  it("blocks all confirmation when one installment has no saved budget", () => {
+    expect(confirmationBlockReason([{ date: "2026-12-13", installment: 1 }, { date: "2027-02-11", installment: 1 }], budgets, "2026-11-17")).toBe("Orçamento de fevereiro de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas.");
+  });
+  it("allows January with its saved budget", () => expect(confirmationBlockReason([{ date: "2027-01-12", installment: 1 }], budgets, "2026-11-17")).toBeNull());
+  it("allows December 31 2027 with its saved budget", () => expect(confirmationBlockReason([{ date: "2027-12-31", installment: 1 }], budgets, "2026-11-17")).toBeNull());
+  it("blocks January 1 2028 before checking its missing budget", () => expect(confirmationBlockReason([{ date: "2028-01-01", installment: 1 }], budgets, "2026-11-17")).toBe("Simulação disponível somente até 31/12/2027"));
+  it("blocks payments before today", () => expect(confirmationBlockReason([{ date: "2026-12-13", installment: 1 }], budgets, "2026-12-14")).toBe("Datas anteriores à data de hoje não são permitidas"));
 });
 describe("monthly availability", () => {
   it("preserves November's saved budget", () => expect(getMonthlyPurchaseDay("2026-11-13", new Map(), new Map([["2026-11", 189146900]])).budgetCents).toBe(189146900));

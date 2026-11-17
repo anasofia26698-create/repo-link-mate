@@ -19,7 +19,7 @@ import {
   OCTOBER_TIGHTENING_THRESHOLD,
 } from "@/lib/simulationRules";
 import { BUYERS } from "@/lib/buyerRules";
-import { FLOW_MONTHS, missingBudgetMessage, parsePurchaseTerms, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "@/lib/purchaseValidation";
+import { FLOW_MONTHS, confirmationBlockReason, missingBudgetMessage, parsePurchaseTerms, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "@/lib/purchaseValidation";
 import { Button } from "@/components/ui/button";
 import { confirmPurchases, listCashFlowMonthBudgets, listCashFlow, listDailySales, saveDailySale, recordAccess, recordSimulation, replaceImport } from "@/lib/cashflow.functions";
 import { getBuyerMonthlyOverview } from "@/lib/buyer.functions";
@@ -290,8 +290,7 @@ function HomePage() {
 
   const confirmMutation = useMutation({ mutationFn: confirmPurchases });
   const importMutation = useMutation({ mutationFn: replaceImport });
-  const missingBudgetScenario = dueDates.find((scenario) => (configuredBudgetMap.get(scenario.date.slice(0, 7)) ?? 0) <= 0);
-  const confirmationBlock = missingBudgetScenario ? missingBudgetMessage(missingBudgetScenario.date.slice(0, 7)) : dueDates.some((scenario) => scenario.installment < 0.01) ? "Valor da parcela muito baixo: informe um valor total maior" : null;
+  const confirmationBlock = confirmationBlockReason(dueDates, configuredBudgetMap);
 
   const confirmPurchase = () => {
     const selected = dueDates.filter((scenario) => selectedTerms.includes(scenario.term));
