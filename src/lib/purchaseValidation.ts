@@ -52,8 +52,7 @@ export function purchaseRejection(date: string, cents: number, debits: ReadonlyM
   if (dateError) return dateError;
   if (!Number.isSafeInteger(cents) || cents < 1) return "Valor da parcela muito baixo: informe um valor total maior";
   const day = getMonthlyPurchaseDay(date, debits, budgets);
-  if (!day.budgetConfigured || day.budgetCents <= 0) return missingBudgetMessage(date.slice(0, 7));
-  if (day.monthBlocked || cents > day.remainingBudgetCents) return "NÃO PODE COMPRAR: saldo do mês insuficiente";
+  if (day.budgetConfigured && (day.monthBlocked || cents > day.remainingBudgetCents)) return "NÃO PODE COMPRAR: saldo do mês insuficiente";
   if (cents > day.freeCents) return "NÃO PODE COMPRAR: limite do dia insuficiente";
   return null;
 }

@@ -12,4 +12,4 @@
 - [x] Verify the saved-sales gate through December 2027 and block invalid payment dates before opening confirmation without changing goals or imports.
 - [x] Extend flow selection and both client/server payment and budget validation through December 2027, preserving existing months.
 - [x] Decouple the simulator date and installments from month selection; restore the device date on reload and allow confirmation of approved installments only.
-- [x] Verify month switching, future-date rejection and unchanged financial values in the browser.
+- [x] Verify month switching, future-date rejection and unchanged financial values in the browser.- [x] Months without budget show raw day slack (goal − debits); confirmation still requires saved budget.

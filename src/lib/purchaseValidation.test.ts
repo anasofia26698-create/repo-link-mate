@@ -33,8 +33,8 @@ describe("confirmation eligibility", () => {
       date, installment: 0.67, canBuy: purchaseRejection(date, 67, new Map(), new Map([["2026-12", 197436800]]), "2026-11-17") === null,
     }));
     const approved = approvedConfirmationScenarios(scenarios);
-    expect(approved.map((scenario) => scenario.date)).toEqual(["2026-12-17"]);
-    expect(confirmationBlockReason(approved, budgets, "2026-11-17")).toBeNull();
+    expect(approved.map((scenario) => scenario.date)).toEqual(["2026-12-17", "2027-01-16", "2027-02-15"]);
+    expect(confirmationBlockReason(approved.slice(0, 2), budgets, "2026-11-17")).toBeNull();
   });
   it("offers no confirmation when every installment is rejected", () => {
     expect(approvedConfirmationScenarios([{ canBuy: false, date: "2028-01-01" }])).toEqual([]);
@@ -49,7 +49,10 @@ describe("confirmation eligibility", () => {
 });
 describe("monthly availability", () => {
   it("preserves November's saved budget", () => expect(getMonthlyPurchaseDay("2026-11-13", new Map(), new Map([["2026-11", 189146900]])).budgetCents).toBe(189146900));
-  it("blocks December 2027 without a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map(), "2026-11-13")).toBe("Orçamento de dezembro de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas."));
+  it("approves by raw day slack when December 2027 has no budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map(), "2026-11-13")).toBeNull());
+  it("Jan 5 2027 without budget: goal 50000, slack 38194.09", () => expect(getMonthlyPurchaseDay("2027-01-05", new Map([["2027-01-05", 1180591]]), new Map()).freeCents).toBe(3819409));
+  it("Jan 17 2027 without budget: goal 52200, slack 51833.26", () => { const d = getMonthlyPurchaseDay("2027-01-17", new Map([["2027-01-17", 36674]]), new Map()); expect(d.goalCents).toBe(5220000); expect(d.freeCents).toBe(5183326); });
+  it("rejects above raw day slack without budget", () => expect(purchaseRejection("2027-01-17", 5183327, new Map([["2027-01-17", 36674]]), new Map(), "2026-11-13")).toBe("NÃO PODE COMPRAR: limite do dia insuficiente"));
   it("accepts December 2027 with a saved budget", () => expect(purchaseRejection("2027-12-31", 1, new Map(), new Map([["2027-12", 10000000]]), "2026-11-13")).toBeNull());
   const budgets = new Map([["2026-12", 197436800], ["2027-02", 10000000], ["2027-06", 10000000]]);
   it("keeps the December budget and sixty percent daily goal", () => {
@@ -58,7 +61,7 @@ describe("monthly availability", () => {
     expect(day.goalCents).toBe(7440000);
   });
   it("keeps the critical day cap at 50000", () => expect(getPurchaseLimitForDate("2027-02-10").limit).toBe(50000));
-  it("blocks March with no registered budget", () => expect(purchaseRejection("2027-03-12", 1, new Map(), budgets, "2026-11-12")).toBe("Orçamento de março de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas."));
+  it("blocks confirmation for March with no registered budget", () => expect(confirmationBlockReason([{ date: "2027-03-12", installment: 1 }], budgets, "2026-11-12")).toBe("Orçamento de março de 2027 não cadastrado. Cadastre a venda do mês na página Cadastro de Metas."));
   it("accepts June 30 with a budget", () => expect(purchaseRejection("2027-06-30", 1, new Map(), budgets, "2026-11-12")).toBeNull());
   it("applies February 10 debits only to February", () => {
     const before = getMonthlyPurchaseDay("2026-12-01", new Map(), budgets);

@@ -282,7 +282,7 @@ function HomePage() {
       const monthlyDay = getMonthlyPurchaseDay(date, debitByDateCents, configuredBudgetMap);
       const reason = purchaseRejection(date, installmentCents, debitByDateCents, configuredBudgetMap);
       const canBuy = reason === null;
-      return { term, date, existing, installment, reason, remainingBudget: monthlyDay.remainingBudgetCents / 100, limit: monthlyDay.limitCents / 100, weekday: target.weekday, isCritical: target.isCritical, isFrozen: monthlyDay.frozen, budgetBlocked: monthlyDay.monthBlocked, canBuy };
+      return { term, date, existing, installment, reason, remainingBudget: monthlyDay.remainingBudgetCents / 100, limit: monthlyDay.limitCents / 100, weekday: target.weekday, isCritical: target.isCritical, isFrozen: monthlyDay.frozen, budgetBlocked: monthlyDay.monthBlocked, budgetConfigured: monthlyDay.budgetConfigured, canBuy };
     });
   }, [simulationMode, paymentDates, terms, purchase, today, grouped, configuredBudgetMap, octoberTighteningFactor, octoberBudgetBlocked]);
   const dueDates = allDueDates;
@@ -637,10 +637,10 @@ function HomePage() {
                             <strong>{money(scenario.installment)}</strong>
                           </div>
                           <div>
-                            <span>Limite do dia (com folga redistribuída)</span>
+                            <span>{scenario.budgetConfigured ? "Limite do dia (com folga redistribuída)" : "Folga do dia (meta − já lançado)"}</span>
                             <strong>{money(scenario.limit)}</strong>
                           </div>
-                          <div><span>Saldo do mês</span><strong>{money(scenario.remainingBudget)}</strong></div>
+                          <div><span>Saldo do mês</span><strong>{scenario.budgetConfigured ? money(scenario.remainingBudget) : missingBudgetMessage(scenario.date.slice(0, 7)).split(".")[0]}</strong></div>
                         </div>
                         <div className="scenario-alert">
                           <div className="scenario-alert-main">
@@ -654,7 +654,7 @@ function HomePage() {
                             </strong>
                           </div>
                           <div className="scenario-alert-support">
-                            {scenario.reason ?? "Débitos existentes + parcela ficam dentro do limite do dia e do saldo do mês."}
+                            {scenario.reason ?? (scenario.budgetConfigured ? "Débitos existentes + parcela ficam dentro do limite do dia e do saldo do mês." : "Parcela dentro da folga do dia. Para confirmar, cadastre a venda do mês na página Cadastro de Metas.")}
                           </div>
                         </div>
                       </div>
@@ -777,8 +777,8 @@ function HomePage() {
                           </span>
                         </div>
                         <div className="critical-amount">
-                          <b className={frozen || budgetBlocked ? "muted" : exceeded ? "red-text" : "green-text"}>{money(flow?.debit ?? 0)}</b>
-                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : !monthlyDay.budgetConfigured ? selectedMonthBudgetMessage : budgetBlocked ? `BLOQUEADO — Sem orçamento no mês${monthlyDay.totalDebitCents > monthlyDay.budgetCents ? ` em ${money((monthlyDay.totalDebitCents - monthlyDay.budgetCents) / 100)}` : ""}` : flow ? (exceeded ? "Limite do dia ultrapassado" : `${money(monthlyDay.freeCents / 100)} livres`) : "sem débitos"}</small>
+                          <b className={frozen || budgetBlocked ? "muted" : exceeded ? "red-text" : monthlyDay.freeCents > 0 ? "green-text" : "muted"}>{money(flow?.debit ?? 0)}</b>
+                          <small>{frozen ? `BLOQUEADO — Fluxo congelado em setembro · ${money(0)} livres` : budgetBlocked ? `BLOQUEADO — Sem orçamento no mês${monthlyDay.totalDebitCents > monthlyDay.budgetCents ? ` em ${money((monthlyDay.totalDebitCents - monthlyDay.budgetCents) / 100)}` : ""}` : flow ? (exceeded ? "Limite do dia ultrapassado" : `${money(monthlyDay.freeCents / 100)} livres`) : "sem débitos"}</small>
                         </div>
                       </div>
                     );
@@ -802,13 +802,13 @@ function HomePage() {
                       </div>
                       <div className="timeline-track">
                         <div
-                          className={"timeline-fill " + (row.exceeded ? "fill-risk" : row.budgetConfigured ? "" : "fill-muted")}
+                          className={"timeline-fill " + (row.exceeded ? "fill-risk" : row.limit - row.debit > 0.004 ? "" : "fill-muted")}
                           style={{ width: String(Math.min(100, row.debit / row.limit * 100)) + "%" }}
                         />
                       </div>
                       <div className="timeline-value">
-                        <strong className={row.isFrozen || !row.budgetConfigured ? "muted" : row.exceeded ? "red-text" : "green-text"}>{money(row.debit)}</strong>
-                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : !row.budgetConfigured ? selectedMonthBudgetMessage : row.budgetBlocked ? `BLOQUEADO — Orçamento do mês ultrapassado em ${money(row.budgetExceededCents / 100)}` : row.exceeded ? "Limite do dia ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
+                        <strong className={row.isFrozen ? "muted" : row.exceeded ? "red-text" : row.limit - row.debit > 0.004 ? "green-text" : "muted"}>{money(row.debit)}</strong>
+                          <span>{row.isFrozen ? "BLOQUEADO — Fluxo congelado em setembro" : row.budgetBlocked ? `BLOQUEADO — Orçamento do mês ultrapassado em ${money(row.budgetExceededCents / 100)}` : row.exceeded ? "Limite do dia ultrapassado" : `${money(row.limit - row.debit)} livres`}</span>
                       </div>
                     </div>
                   ))}

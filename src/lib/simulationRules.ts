@@ -71,8 +71,10 @@ export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMa
   const scale = goalFreeCents > 0 ? Math.min(1, remainingBudgetCents / goalFreeCents) : 0;
   const targetDateGoalCents = goals.get(date) ?? Math.round(getPurchaseLimitForDate(date).limit * 100);
   const targetDebitCents = debitByDateCents.get(date) ?? 0;
-  const monthBlocked = !budgetConfigured || month === "2026-09" || (month === "2026-10" && totalDebitCents > budgetCents);
-  const allocationTargetCents = monthBlocked ? 0 : Math.min(remainingBudgetCents, goalFreeCents);
+  // Sem orçamento cadastrado: sem redistribuição, limite = folga bruta (meta − já lançado).
+  const rawSlackOnly = !budgetConfigured && month !== "2026-09";
+  const monthBlocked = month === "2026-09" || (month === "2026-10" && totalDebitCents > budgetCents);
+  const allocationTargetCents = monthBlocked || rawSlackOnly ? 0 : Math.min(remainingBudgetCents, goalFreeCents);
   const allocatedFreeByDate = new Map<string, number>();
   let allocatedCents = 0;
   const fractionalDays: { date: string; fraction: number }[] = [];
@@ -94,7 +96,7 @@ export function getMonthlyPurchaseDay(date: string, debitByDateCents: ReadonlyMa
       remainderCents -= 1;
     }
   }
-  const freeCents = allocatedFreeByDate.get(date) ?? 0;
+  const freeCents = rawSlackOnly ? targetFreeByDate.get(date) ?? 0 : allocatedFreeByDate.get(date) ?? 0;
   return {
     date,
     debitCents: targetDebitCents,
