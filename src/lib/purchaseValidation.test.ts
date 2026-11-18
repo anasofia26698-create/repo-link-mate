@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { allocateBudgetCents, approvedConfirmationScenarios, confirmationBlockReason, FLOW_MONTHS, paymentDateError, purchaseRejection, splitInstallmentCents, termError } from "./purchaseValidation";
-import { getMonthlyPurchaseDay, getPurchaseLimitForDate } from "./simulationRules";
+import { buildTermPaymentScenarios, getMonthlyPurchaseDay, getPurchaseLimitForDate } from "./simulationRules";
+
+describe("simulator reference date", () => {
+  it("calculates every installment from November 17, regardless of the flow display month", () => {
+    expect(buildTermPaymentScenarios("2026-11-17", [30, 60, 90], 2).map((scenario) => scenario.date))
+      .toEqual(["2026-12-17", "2027-01-16", "2027-02-15"]);
+  });
+});
 
 describe("payment window", () => {
   it("lists November 2026 through December 2027 chronologically", () => expect([...FLOW_MONTHS]).toEqual(["2026-11", "2026-12", "2027-01", "2027-02", "2027-03", "2027-04", "2027-05", "2027-06", "2027-07", "2027-08", "2027-09", "2027-10", "2027-11", "2027-12"]));
