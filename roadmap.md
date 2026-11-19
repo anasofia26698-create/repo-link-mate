@@ -1,4 +1,7 @@
 # Flow through December 2027
+- [ ] Persist legacy sector goals and migrate browser records safely after server password validation.
+- [ ] Require a fresh server-validated password on every goals entry and protect goals reads/writes.
+- [ ] Verify shared monthly values, password rejection/re-entry, migration and unchanged December values.
 - [x] Include November in buyer goals, add monthly sales entry and pending status while preserving existing budgets.
 - [x] Block missing-budget confirmation and reject purchases with any sub-cent installment.
 - [x] Keep confirmed purchases permanently in cash flow, buyer balance and audit; remove expiration paths.

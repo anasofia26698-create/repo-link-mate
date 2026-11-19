@@ -16,19 +16,28 @@ import {
 } from "@/lib/buyer.functions";
 import { iso, money, parseBRL } from "@/components/cashflow/format";
 import { GoalsTab } from "@/components/cashflow/PurchaseGoals";
+import { useServerFn } from "@tanstack/react-start";
+import { validateGoalsAccess } from "@/lib/sectorGoals.functions";
+import { Button } from "@/components/ui/button";
 
 type BuyerArea = "metas" | "importar";
 
 function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (password: string) => void }) {
   const [password, setPassword] = useState("");
+  const validate = useServerFn(validateGoalsAccess);
   return (
     <section className="card access-card">
       <LockKeyhole size={28} />
       <h2>Área protegida</h2>
       <p>Informe a senha para acessar {area === "metas" ? "o Cadastro de Metas" : "a Importação de Planilha"}.</p>
       <form
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
+          if (area === "metas") {
+            try { await validate({ data: { password } }); onUnlock(password); }
+            catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível verificar a senha."); }
+            return;
+          }
           if (isBuyerModuleAccessGranted(password)) onUnlock(password.trim());
           else toast.error("Senha incorreta.");
         }}
@@ -37,7 +46,7 @@ function BuyerPasswordGate({ area, onUnlock }: { area: BuyerArea; onUnlock: (pas
           Senha
           <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoFocus />
         </label>
-        <button className="btn btn-dark full">Entrar</button>
+        <Button type="submit" className="btn btn-dark full">Entrar</Button>
       </form>
     </section>
   );
@@ -72,7 +81,7 @@ export function BuyerModule() {
       {!password ? (
         <BuyerPasswordGate area={area} onUnlock={setPassword} />
       ) : area === "metas" ? (
-        <GoalsTab requireBuyerAccess={false} />
+        <GoalsTab accessPassword={password} />
       ) : (
         <BuyerImportArea password={password} />
       )}

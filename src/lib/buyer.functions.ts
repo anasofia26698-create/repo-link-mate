@@ -96,6 +96,7 @@ export const saveBuyerGoalBudget = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) =>
     z
       .object({
+        password: z.string(),
         period: z.string().regex(/^\d{4}-\d{2}$/),
         buyer: z.string().trim().min(1).max(60),
         monthlyCents: z.number().int().min(0),
@@ -103,6 +104,7 @@ export const saveBuyerGoalBudget = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
+    await requirePassword(data.password);
     const { saveBuyerBudget } = await import("./buyer.server");
     return saveBuyerBudget({ period: data.period, buyer: data.buyer, monthlyCents: data.monthlyCents });
   });
@@ -117,9 +119,10 @@ const goalConfigSchema = z.object({
   ips: z.array(z.string().trim().min(3).max(64)).max(50),
 });
 
-export const getBuyerGoalConfigs = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
+export const getBuyerGoalConfigs = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => passwordSchema.extend({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
   .handler(async ({ data }) => {
+    await requirePassword(data.password);
     const { listBuyerGoalConfigs } = await import("./buyer.server");
     return listBuyerGoalConfigs(data.period);
   });
@@ -155,8 +158,9 @@ export const saveBuyerGoalMonth = createServerFn({ method: "POST" })
   });
 
 export const saveBuyerGoalConfig = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => goalConfigSchema.parse(data))
+  .inputValidator((data: unknown) => goalConfigSchema.extend({ password: z.string() }).parse(data))
   .handler(async ({ data }) => {
+    await requirePassword(data.password);
     const { saveBuyerGoalConfig } = await import("./buyer.server");
     return saveBuyerGoalConfig(data);
   });
@@ -174,16 +178,18 @@ export const repairNovemberDashboardBudgets = createServerFn({ method: "POST" })
     return repair();
   });
 
-export const getLineGoals = createServerFn({ method: "GET" })
-  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
+export const getLineGoals = createServerFn({ method: "POST" })
+  .inputValidator((data: unknown) => passwordSchema.extend({ period: z.string().regex(/^\d{4}-\d{2}$/) }).parse(data))
   .handler(async ({ data }) => {
+    await requirePassword(data.password);
     const { listLineGoals } = await import("./buyer.server");
     return listLineGoals(data.period);
   });
 
 export const saveLineGoals = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => z.object({ period: z.string().regex(/^\d{4}-\d{2}$/), goals: z.array(z.object({ id: z.number().int().optional(), lineName: z.string().trim().min(1).max(100), salesCents: z.number().int().nonnegative() })).max(100) }).parse(data))
+  .inputValidator((data: unknown) => z.object({ password: z.string(), period: z.string().regex(/^\d{4}-\d{2}$/), goals: z.array(z.object({ id: z.number().int().optional(), lineName: z.string().trim().min(1).max(100), salesCents: z.number().int().nonnegative() })).max(100) }).parse(data))
   .handler(async ({ data }) => {
+    await requirePassword(data.password);
     const { replaceLineGoals } = await import("./buyer.server");
     return replaceLineGoals(data);
   });

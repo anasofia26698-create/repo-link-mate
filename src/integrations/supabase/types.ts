@@ -386,6 +386,42 @@ export type Database = {
         }
         Relationships: []
       }
+      purchase_sector_goals: {
+        Row: {
+          cmv: number
+          coverage: number
+          final_stock: number
+          initial_stock: number
+          period: string
+          sales: number
+          sector: string
+          turnover: number
+          updated_at: string
+        }
+        Insert: {
+          cmv?: number
+          coverage?: number
+          final_stock?: number
+          initial_stock?: number
+          period: string
+          sales?: number
+          sector: string
+          turnover?: number
+          updated_at?: string
+        }
+        Update: {
+          cmv?: number
+          coverage?: number
+          final_stock?: number
+          initial_stock?: number
+          period?: string
+          sales?: number
+          sector?: string
+          turnover?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -416,6 +452,10 @@ export type Database = {
           p_month: string
           p_shares: Json
         }
+        Returns: undefined
+      }
+      save_sector_goals: {
+        Args: { p_goals: Json; p_migrate?: boolean }
         Returns: undefined
       }
       update_october_accounting: {

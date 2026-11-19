@@ -57,6 +57,13 @@
       "when": 1794583948510,
       "tag": "0007_permanent_confirmations_and_november_goals",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795089441319,
+      "tag": "0008_persist_sector_goals_and_safe_browser_migration",
+      "breakpoints": true
     }
   ]
 }

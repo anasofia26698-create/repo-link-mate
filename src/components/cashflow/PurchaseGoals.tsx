@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, ArrowLeft, BarChart3, Calculator, ChevronLeft, ChevronRight, LockKeyhole, Save } from "lucide-react";
-import { isPurchaseAccessGranted } from "@/lib/purchaseRules";
+import { useServerFn } from "@tanstack/react-start";
+import { getSectorGoals, saveSectorGoals, validateGoalsAccess } from "@/lib/sectorGoals.functions";
+import { LEGACY_GOALS_KEY, parseLegacyGoals, type SectorGoal } from "@/lib/sectorGoalRules";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Line, LineChart, ReferenceDot, XAxis, YAxis } from "recharts";
@@ -45,20 +47,21 @@ const emptyGoal = (sector: Sector): Goal => ({
   turnover: 0,
 });
 
-function PasswordGate({ children, skip = false }: { children: ReactNode; skip?: boolean }) {
+function PasswordGate({ children }: { children: (password: string) => ReactNode }) {
   const [password, setPassword] = useState("");
   const [unlocked, setUnlocked] = useState(false);
-  if (skip || unlocked) return <>{children}</>;
+  const validate = useServerFn(validateGoalsAccess);
+  if (unlocked) return <>{children(password)}</>;
   return (
     <section className="card access-card">
       <LockKeyhole size={28} />
       <h2>Área protegida</h2>
       <p>Informe a senha para acessar os dados consolidados de compras.</p>
       <form
-        onSubmit={(event) => {
+        onSubmit={async (event) => {
           event.preventDefault();
-          if (isPurchaseAccessGranted(password)) setUnlocked(true);
-          else toast.error("Senha incorreta.");
+          try { await validate({ data: { password } }); setUnlocked(true); }
+          catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível verificar a senha."); }
         }}
       >
         <label>
@@ -70,7 +73,7 @@ function PasswordGate({ children, skip = false }: { children: ReactNode; skip?: 
             autoFocus
           />
         </label>
-        <button className="btn btn-dark full">Entrar</button>
+        <Button className="btn btn-dark full" type="submit">Entrar</Button>
       </form>
     </section>
   );
@@ -102,9 +105,35 @@ const buyerChartConfig = {
 } satisfies ChartConfig;
 type BuyerChartPoint = { day: string; Marcelo: number; Suellen: number; "Maurício": number };
 
-export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: boolean } = {}) {
+export function GoalsTab({ accessPassword }: { accessPassword?: string } = {}) {
+  if (accessPassword) return <GoalsContent password={accessPassword} />;
+  return <PasswordGate>{(password) => <GoalsContent password={password} />}</PasswordGate>;
+}
+
+function GoalsContent({ password }: { password: string }) {
+  const client = useQueryClient();
+  const migrate = useServerFn(saveSectorGoals);
+  const [migrationChecked, setMigrationChecked] = useState(false);
+  const [migrationError, setMigrationError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const transfer = async () => {
+      try {
+        const raw = localStorage.getItem(LEGACY_GOALS_KEY);
+        if (raw) {
+          await migrate({ data: { password, goals: parseLegacyGoals(raw), migrate: true } });
+          localStorage.removeItem(LEGACY_GOALS_KEY);
+          await client.invalidateQueries();
+          toast.success("Metas antigas transferidas para o servidor com sucesso.");
+        }
+        if (active) setMigrationChecked(true);
+      } catch { if (active) { setMigrationError(true); toast.error("Não foi possível transferir as metas antigas. Os dados do navegador foram preservados."); } }
+    };
+    void transfer();
+    return () => { active = false; };
+  }, [client, migrate, password]);
   return (
-    <PasswordGate skip={!requireBuyerAccess}>
+    <>
       <div className="page-heading page-heading-compact">
         <div>
           <p className="eyebrow">Metas compras</p>
@@ -112,8 +141,11 @@ export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: b
           <p className="subheading">Configure compradores uma vez e informe somente a venda mensal para gerar a dotação e as metas diárias.</p>
         </div>
       </div>
-      <BuyerGoalsForm />
-      <MonthlyPurchasePlan />
+      {!migrationChecked ? <p className="muted">{migrationError ? "Metas locais preservadas. Entre novamente para tentar a transferência." : "Carregando metas..."}</p> : <>
+        <BuyerGoalsForm accessPassword={password} />
+        <SectorGoalsForm password={password} />
+        <MonthlyPurchasePlan accessPassword={password} />
+      </>}
       <section className="card rules-card">
         <div className="card-heading">
           <div>
@@ -125,7 +157,7 @@ export function GoalsTab({ requireBuyerAccess = true }: { requireBuyerAccess?: b
           {BUYER_BUSINESS_RULES.map((rule) => <li key={rule}>{rule}</li>)}
         </ul>
       </section>
-    </PasswordGate>
+    </>
   );
 }
 
@@ -133,17 +165,17 @@ const GOAL_PERIODS = GOAL_MONTHS.map((value) => ({ value, label: new Date(`${val
 
 type GoalDraft = { monthly: Record<string, MonthlyBuyerConfig>; profiles: Record<string, BuyerProfile>; shares: number[] };
 
-function BuyerGoalsForm() {
+function BuyerGoalsForm({ accessPassword }: { accessPassword: string }) {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState("2026-12");
   const [draft, setDraft] = useState<GoalDraft | null>(null);
   const [monthSalesInput, setMonthSalesInput] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [password, setPassword] = useState("");
+  const saveMonth = useServerFn(saveBuyerGoalMonth);
   const plans = useQuery({ queryKey: ["cash-flow-month-budgets"], queryFn: () => listCashFlowMonthBudgets() });
-  const configs = useQuery({ queryKey: ["buyer-goal-periods"], queryFn: async () => {
-    const rows = await Promise.all(GOAL_MONTHS.map((period) => getBuyerGoalConfigs({ data: { period } })));
+  const configs = useQuery({ queryKey: ["buyer-goal-periods"], staleTime: 0, queryFn: async () => {
+    const rows = await Promise.all(GOAL_MONTHS.map((period) => getBuyerGoalConfigs({ data: { period, password: accessPassword } })));
     return rows.flat();
   } });
   const savedDraft = useMemo<GoalDraft>(() => {
@@ -194,7 +226,7 @@ function BuyerGoalsForm() {
   const save = async () => {
     setSaving(true);
     try {
-      await saveBuyerGoalMonth({ data: { password, period, shares: active.shares, configs: BUYERS.map((buyer) => ({
+      await saveMonth({ data: { password: accessPassword, period, shares: active.shares, configs: BUYERS.map((buyer) => ({
         buyer, salesCents: Math.round(parseBRL(active.monthly[buyer]?.sales ?? "") * 100),
         cmvPercent: Number((active.monthly[buyer]?.cmv ?? "60").replace(",", ".")),
         ips: (active.profiles[buyer]?.ips ?? "").split(/[\s,;]+/).map((ip) => ip.trim().toLowerCase()).filter(Boolean),
@@ -216,7 +248,6 @@ function BuyerGoalsForm() {
         if (dirty && !window.confirm("Há alterações não salvas. Deseja descartá-las e trocar de período?")) return;
         setPeriod(event.target.value); setDraft(null); setMonthSalesInput(null); setDirty(false);
       }}>{GOAL_PERIODS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
-      <label>Senha de acesso<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       <Button className="btn btn-dark" onClick={save} disabled={saving || configs.isLoading || plans.isLoading || configs.isError || plans.isError}><Save size={17} /> {saving ? "Salvando..." : "Salvar"}</Button>
     </div>
     <section className="card december-allocation-note">
@@ -261,6 +292,28 @@ function BuyerGoalsForm() {
     </>;
 }
 
+function SectorGoalsForm({ password }: { password: string }) {
+  const client = useQueryClient();
+  const read = useServerFn(getSectorGoals);
+  const save = useServerFn(saveSectorGoals);
+  const query = useQuery({ queryKey: ["sector-goals"], staleTime: 0, queryFn: () => read({ data: { password } }) });
+  const [draft, setDraft] = useState<SectorGoal[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const rows = draft ?? query.data ?? [];
+  if (!rows.length) return null;
+  const fields = ["sales", "cmv", "initialStock", "finalStock", "coverage", "turnover"] as const;
+  return <section className="card goals-card">
+    <div className="card-heading"><h2>Metas por setor</h2><Button disabled={saving || !draft} onClick={async () => {
+      setSaving(true);
+      try { await save({ data: { password, goals: rows, migrate: false } }); await client.invalidateQueries(); setDraft(null); toast.success("Metas salvas com sucesso."); }
+      catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível salvar as metas."); }
+      finally { setSaving(false); }
+    }}><Save size={17} />Salvar</Button></div>
+    <div className="goals-table-wrap"><table className="goals-table"><thead><tr>{["Setor", "Período", "Venda prevista", "% CMV", "Estoque inicial", "Estoque final", "Cobertura", "Giro"].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
+      {rows.map((row, index) => <tr key={`${row.period}:${row.sector}`}><td>{row.sector}</td><td>{monthLabel(row.period)}</td>{fields.map((field) => <td key={field}><input aria-label={`${row.sector} ${row.period} ${field}`} type="number" min="0" step="0.01" value={row[field]} onChange={(event) => setDraft(rows.map((item, i) => i === index ? { ...item, [field]: Number(event.target.value) } : item))} /></td>)}</tr>)}
+    </tbody></table></div>
+  </section>;
+}
 
 export function PurchasesDashboardTab() {
   const queryClient = useQueryClient();

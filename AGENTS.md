@@ -17,3 +17,5 @@
 - Flow selection lists the entire shared month window and remembers only the display selection locally; purchasing eligibility still requires positive persisted plans and saved monthly sales, validated by the locked confirmation RPC.
 - The flow selector filters only monthly financial views; initialize the editable simulator reference date from the device after hydration and never filter or reset its installments on month changes, so payment dates remain independent.
 - Simulator confirmation controls select only approved installments and validate selected dates and budgets through shared rules; rejected scenarios remain visible without preventing confirmation of approved ones.
+- Sector goals use password-validated TanStack server functions and an atomic database RPC; browser migration inserts missing records only and preserves existing monthly plans, so no browser can overwrite shared financial history during migration.
+- Goals access credentials live only in mounted tab state and are verified server-side on entry, reads and writes; public financial views expose consolidated totals rather than protected goal records.
